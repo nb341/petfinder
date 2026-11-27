@@ -1,0 +1,41 @@
+name: Frontend
+description: Angular ui (apps/ui) work
+title: "[Frontend] "
+labels: ["frontend"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is needed and why.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Gherkin scenarios covering the happy path, edge cases and error cases. They become the `.feature` file for this ticket.
+      render: gherkin
+      value: |
+        @ui
+        Feature: <capability>
+          As a visitor
+          I want <goal>
+          So that <benefit>
+
+          Scenario: <happy path>
+            Given <context>
+            When I open the pet listings page
+            Then I see a list of available pets
+
+          Scenario: <edge or error case>
+            Given <context>
+            When <action>
+            Then <observable outcome>
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Out of scope, dependencies, links or designs.
