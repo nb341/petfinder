@@ -12,28 +12,35 @@ import { Subnet } from '@cdktn/provider-aws/lib/subnet';
 import { Vpc } from '@cdktn/provider-aws/lib/vpc';
 import { VpcSecurityGroupEgressRule } from '@cdktn/provider-aws/lib/vpc-security-group-egress-rule';
 import { VpcSecurityGroupIngressRule } from '@cdktn/provider-aws/lib/vpc-security-group-ingress-rule';
-import { NetworkConfig } from '../config';
 
-export interface NetworkProps extends NetworkConfig {
-  readonly name: string;
+export interface NetworkModuleProps {
+  /** `<project>-<environment>`; resources are named `<namePrefix>-<role>`. */
+  readonly namePrefix: string;
+  readonly cidr: string;
+  readonly availabilityZones: readonly string[];
+  /** One NAT gateway shared by all private subnets, for outbound internet. */
+  readonly singleNatGateway: boolean;
+  /** Port the database security group accepts from the app security group. */
+  readonly databasePort: number;
 }
 
 const PUBLIC_NETNUM = 0;
 const PRIVATE_NETNUM = 10;
 
-export class Network extends Construct {
-  readonly vpc: Vpc;
-  readonly publicSubnets: Subnet[];
-  readonly privateSubnets: Subnet[];
-  readonly appSecurityGroup: SecurityGroup;
-  readonly dbSecurityGroup: SecurityGroup;
+/** VPC with public and private subnets per AZ, routing, and baseline app/database security groups. */
+export class NetworkModule extends Construct {
+  readonly vpcId: string;
+  readonly publicSubnetIds: string[];
+  readonly privateSubnetIds: string[];
+  readonly appSecurityGroupId: string;
+  readonly databaseSecurityGroupId: string;
 
-  constructor(scope: Construct, id: string, props: NetworkProps) {
+  constructor(scope: Construct, id: string, props: NetworkModuleProps) {
     super(scope, id);
-    const prefix = `petfinder-${props.name}`;
+    const prefix = props.namePrefix;
     const tags = (name: string, extra: Record<string, string> = {}) => ({ Name: `${prefix}-${name}`, ...extra });
 
-    this.vpc = new Vpc(this, 'vpc', {
+    const vpc = new Vpc(this, 'vpc', {
       cidrBlock: props.cidr,
       enableDnsSupport: true,
       enableDnsHostnames: true,
@@ -41,19 +48,19 @@ export class Network extends Construct {
     });
 
     // Managing the default SG with no rules strips its allow-all rules, so nothing gets access by accident.
-    new DefaultSecurityGroup(this, 'default-sg', { vpcId: this.vpc.id, tags: tags('default-locked') });
+    new DefaultSecurityGroup(this, 'default-sg', { vpcId: vpc.id, tags: tags('default-locked') });
 
-    const igw = new InternetGateway(this, 'igw', { vpcId: this.vpc.id, tags: tags('igw') });
-    const publicRoutes = new RouteTable(this, 'public-rt', { vpcId: this.vpc.id, tags: tags('public') });
+    const igw = new InternetGateway(this, 'igw', { vpcId: vpc.id, tags: tags('igw') });
+    const publicRoutes = new RouteTable(this, 'public-rt', { vpcId: vpc.id, tags: tags('public') });
     new Route(this, 'public-internet', {
       routeTableId: publicRoutes.id,
       destinationCidrBlock: '0.0.0.0/0',
       gatewayId: igw.id
     });
 
-    this.publicSubnets = props.azs.map((az, i) => {
+    const publicSubnets = props.availabilityZones.map((az, i) => {
       const subnet = new Subnet(this, `public-${az}`, {
-        vpcId: this.vpc.id,
+        vpcId: vpc.id,
         availabilityZone: az,
         cidrBlock: Fn.cidrsubnet(props.cidr, 8, PUBLIC_NETNUM + i),
         mapPublicIpOnLaunch: false,
@@ -64,24 +71,24 @@ export class Network extends Construct {
     });
 
     const nat =
-      props.nat === 'single'
+      props.singleNatGateway
         ? new NatGateway(this, 'nat', {
-            subnetId: this.publicSubnets[0].id,
+            subnetId: publicSubnets[0].id,
             allocationId: new Eip(this, 'nat-eip', { domain: 'vpc', tags: tags('nat') }).allocationId,
             tags: tags('nat'),
             dependsOn: [igw]
           })
         : undefined;
 
-    this.privateSubnets = props.azs.map((az, i) => {
+    const privateSubnets = props.availabilityZones.map((az, i) => {
       const subnet = new Subnet(this, `private-${az}`, {
-        vpcId: this.vpc.id,
+        vpcId: vpc.id,
         availabilityZone: az,
         cidrBlock: Fn.cidrsubnet(props.cidr, 8, PRIVATE_NETNUM + i),
         mapPublicIpOnLaunch: false,
         tags: tags(`private-${az}`, { tier: 'private' })
       });
-      const routes = new RouteTable(this, `private-${az}-rt`, { vpcId: this.vpc.id, tags: tags(`private-${az}`) });
+      const routes = new RouteTable(this, `private-${az}-rt`, { vpcId: vpc.id, tags: tags(`private-${az}`) });
       new RouteTableAssociation(this, `private-${az}-rta`, { subnetId: subnet.id, routeTableId: routes.id });
       if (nat) {
         new Route(this, `private-${az}-nat`, {
@@ -93,32 +100,38 @@ export class Network extends Construct {
       return subnet;
     });
 
-    this.appSecurityGroup = new SecurityGroup(this, 'app-sg', {
+    const appSecurityGroup = new SecurityGroup(this, 'app-sg', {
       name: `${prefix}-app`,
       description: 'API compute. Ingress is added with the compute choice (#13).',
-      vpcId: this.vpc.id,
+      vpcId: vpc.id,
       tags: tags('app')
     });
     new VpcSecurityGroupEgressRule(this, 'app-egress', {
-      securityGroupId: this.appSecurityGroup.id,
+      securityGroupId: appSecurityGroup.id,
       ipProtocol: '-1',
       cidrIpv4: '0.0.0.0/0',
       description: 'All outbound'
     });
 
-    this.dbSecurityGroup = new SecurityGroup(this, 'db-sg', {
+    const dbSecurityGroup = new SecurityGroup(this, 'db-sg', {
       name: `${prefix}-db`,
-      description: 'Postgres. Only reachable from the app security group.',
-      vpcId: this.vpc.id,
+      description: 'Database. Only reachable from the app security group.',
+      vpcId: vpc.id,
       tags: tags('db')
     });
     new VpcSecurityGroupIngressRule(this, 'db-from-app', {
-      securityGroupId: this.dbSecurityGroup.id,
-      referencedSecurityGroupId: this.appSecurityGroup.id,
+      securityGroupId: dbSecurityGroup.id,
+      referencedSecurityGroupId: appSecurityGroup.id,
       ipProtocol: 'tcp',
-      fromPort: 5432,
-      toPort: 5432,
-      description: 'Postgres from app'
+      fromPort: props.databasePort,
+      toPort: props.databasePort,
+      description: 'Database from app'
     });
+
+    this.vpcId = vpc.id;
+    this.publicSubnetIds = publicSubnets.map((subnet) => subnet.id);
+    this.privateSubnetIds = privateSubnets.map((subnet) => subnet.id);
+    this.appSecurityGroupId = appSecurityGroup.id;
+    this.databaseSecurityGroupId = dbSecurityGroup.id;
   }
 }

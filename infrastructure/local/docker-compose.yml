@@ -6,7 +6,7 @@ services:
     container_name: petfinder-postgres
     restart: unless-stopped
     # Compose only reads .env next to this file, so the root .env is passed in explicitly.
-    env_file: ../.env
+    env_file: ../../.env
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     volumes:
