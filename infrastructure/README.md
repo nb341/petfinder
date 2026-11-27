@@ -22,14 +22,15 @@ infrastructure/
 ├── main.ts                  # creates one stack per env (or just INFRA_ENV) and synthesizes
 ├── stacks/
 │   ├── base-stack.ts        # abstract BaseStack: config, provider, account guard, state, tags, naming
-│   ├── application-stack.ts # networking + rds
+│   ├── application-stack.ts # networking + load balancer + rds
 │   ├── registry-stack.ts    # shared ECR repositories for the app images
 │   ├── state-backend.ts     # S3 (or floci) state backend for every deployable stack
 │   └── provider.ts          # AWS provider with standard tags (shared with bootstrap)
 ├── modules/
-│   ├── networking/          # VPC, subnets, routing, app/db security groups
+│   ├── networking/          # VPC, subnets, routing, alb/app/ui/db security groups
 │   ├── rds/                 # RDS Postgres, password kept in Secrets Manager by RDS
 │   ├── ecr/                 # ECR repository: immutable tags, scan on push, image expiry
+│   ├── load-balancer/       # ALB, api/ui target groups, HTTP listener with /api routing
 │   └── s3/                  # private bucket: SSE, public access block, TLS-only
 ├── bootstrap/               # S3 state bucket, deployed on its own first
 ├── local/                   # floci + Postgres for local work (see local/README.md)
@@ -78,7 +79,7 @@ infrastructure/
 | `dev` | 10.10.0.0/16 | `db.t4g.micro` | 1 day | off |
 | `uat` | 10.20.0.0/16 | `db.t4g.micro` | 1 day | off |
 | `staging` | 10.30.0.0/16 | `db.t4g.small` | 7 days | off |
-| `prod` | 10.40.0.0/16 | `db.t4g.small` | 7 days | on, plus a final snapshot |
+| `prod` | 10.40.0.0/16 | `db.t4g.small` | 7 days | on (database with a final snapshot, and the load balancer) |
 
 ### Naming and tags
 
@@ -105,9 +106,12 @@ infrastructure/
 ### Security defaults
 
 - Databases are in private subnets, aren't publicly accessible, and are encrypted at rest.
-- The VPC's default security group has no rules. Every rule is explicit and as narrow as possible: the database allows its port only from the app security group.
+- The VPC's default security group has no rules. Every rule is explicit and as narrow as possible:
+  - The ALB takes `80` from the internet and can only reach the api and ui ports.
+  - The api (`app`) and `ui` groups accept traffic only from the ALB.
+  - The database accepts its port only from `app`.
 - Buckets are private, encrypted and TLS-only.
-- Prod must have deletion protection and at least 7 days of backups. Validation enforces both.
+- Prod must have database and load balancer deletion protection and at least 7 days of backups. Validation enforces all three.
 
 ### Code style
 
@@ -159,9 +163,18 @@ Replace `dev` with `uat`, `staging`, `prod` or `local`.
 
 The `application` stack in each env contains:
 
-- **Networking:** a VPC across 2 AZs, with a public and a private `/24` subnet in each. Only the public route table routes to the internet gateway. NAT is off (`networking.singleNatGateway`). The `app` security group allows egress only, and the `db` security group allows only the database port from `app`.
+- **Networking:** a VPC across 2 AZs, with a public and a private `/24` subnet in each. Only the public route table routes to the internet gateway. NAT is off (`networking.singleNatGateway`).
+- **Security groups:**
+  - `alb`: HTTP from the internet, egress only to `app` and `ui`.
+  - `app` (api): ingress only from `alb`, and all egress.
+  - `ui`: ingress only from `alb`, and HTTPS egress.
+  - `db`: only the database port, from `app`.
+- **Load balancer:** an internet-facing ALB on HTTP `:80`.
+  - `/api` and `/api/*` go to the api target group (`services.api`: port 3000, health `/api`).
+  - Everything else goes to the ui target group (`services.ui`: port 8080, health `/healthz`).
+  - It returns 503 until the ECS services register.
 - **Database:** RDS Postgres 17 on `gp3`, with the master password in Secrets Manager (`manage_master_user_password`).
-- **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id`, `db_security_group_id`, `db_endpoint`, `db_port`, `db_name` and `db_secret_arn`.
+- **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id`, `ui_security_group_id`, `alb_security_group_id`, `db_security_group_id`, `alb_dns_name`, `api_target_group_arn`, `ui_target_group_arn`, `db_endpoint`, `db_port`, `db_name` and `db_secret_arn`.
 
 The account-wide `registry` stack contains:
 

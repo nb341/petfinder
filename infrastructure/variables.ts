@@ -33,6 +33,23 @@ export interface RdsConfig {
   deletionProtection: boolean;
 }
 
+/** A container the load balancer routes to. */
+export interface ServiceConfig {
+  /** Container port; 1024+ because the images run as non-root. */
+  port: number;
+  /** Path the load balancer polls; it must answer 200. */
+  healthCheckPath: string;
+}
+
+export interface ServicesConfig {
+  api: ServiceConfig;
+  ui: ServiceConfig;
+}
+
+export interface LoadBalancerConfig {
+  deletionProtection: boolean;
+}
+
 export interface EnvironmentConfig {
   project: string;
   owner: string;
@@ -42,6 +59,8 @@ export interface EnvironmentConfig {
   target: DeployTarget;
   networking: NetworkingConfig;
   rds: RdsConfig;
+  services: ServicesConfig;
+  loadBalancer: LoadBalancerConfig;
 }
 
 const accountId = process.env['INFRA_AWS_ACCOUNT_ID'] ?? '';
@@ -68,6 +87,13 @@ const defaults = {
     port: 5432,
     backupRetentionDays: 1,
     deletionProtection: false
+  },
+  services: {
+    api: { port: 3000, healthCheckPath: '/api' },
+    ui: { port: 8080, healthCheckPath: '/healthz' }
+  },
+  loadBalancer: {
+    deletionProtection: false
   }
 } satisfies Omit<EnvironmentConfig, 'target' | 'networking'> & { networking: Omit<NetworkingConfig, 'cidr'> };
 
@@ -79,25 +105,33 @@ export const variables: Record<Environment, EnvironmentConfig> = {
     ...defaults,
     target: awsProfile('dev'),
     networking: { ...defaults.networking, cidr: '10.10.0.0/16' },
-    rds: { ...defaults.rds }
+    rds: { ...defaults.rds },
+    services: { ...defaults.services },
+    loadBalancer: { ...defaults.loadBalancer }
   },
   uat: {
     ...defaults,
     target: awsProfile('uat'),
     networking: { ...defaults.networking, cidr: '10.20.0.0/16' },
-    rds: { ...defaults.rds }
+    rds: { ...defaults.rds },
+    services: { ...defaults.services },
+    loadBalancer: { ...defaults.loadBalancer }
   },
   staging: {
     ...defaults,
     target: awsProfile('staging'),
     networking: { ...defaults.networking, cidr: '10.30.0.0/16' },
-    rds: { ...defaults.rds, instanceClass: 'db.t4g.small', backupRetentionDays: 7 }
+    rds: { ...defaults.rds, instanceClass: 'db.t4g.small', backupRetentionDays: 7 },
+    services: { ...defaults.services },
+    loadBalancer: { ...defaults.loadBalancer }
   },
   prod: {
     ...defaults,
     target: awsProfile('prod'),
     networking: { ...defaults.networking, cidr: '10.40.0.0/16' },
-    rds: { ...defaults.rds, instanceClass: 'db.t4g.small', backupRetentionDays: 7, deletionProtection: true }
+    rds: { ...defaults.rds, instanceClass: 'db.t4g.small', backupRetentionDays: 7, deletionProtection: true },
+    services: { ...defaults.services },
+    loadBalancer: { ...defaults.loadBalancer, deletionProtection: true }
   }
 };
 
@@ -142,7 +176,7 @@ export function cidrRange(cidr: string): [number, number] | undefined {
 /** Throws one error listing every problem, so a bad config fails before synthesis. */
 export function validateConfig(environment: string, config: EnvironmentConfig): void {
   const errors: string[] = [];
-  const { networking, rds } = config;
+  const { networking, rds, services } = config;
 
   if (!/^\d{12}$/.test(config.accountId)) {
     errors.push('accountId must be a 12-digit AWS account ID: set INFRA_AWS_ACCOUNT_ID in the root .env');
@@ -167,9 +201,19 @@ export function validateConfig(environment: string, config: EnvironmentConfig): 
   }
   if (!Number.isInteger(rds.port) || rds.port < 1150 || rds.port > 65535) errors.push('rds.port must be between 1150 and 65535');
 
+  for (const name of ['api', 'ui'] as const) {
+    const service = services[name];
+    if (!Number.isInteger(service.port) || service.port < 1024 || service.port > 65535) {
+      errors.push(`services.${name}.port must be between 1024 and 65535 (the containers run as non-root)`);
+    }
+    if (!service.healthCheckPath.startsWith('/')) errors.push(`services.${name}.healthCheckPath must start with "/"`);
+  }
+  if (services.api.port === services.ui.port) errors.push('services.api.port and services.ui.port must differ');
+
   if (environment === 'prod') {
     if (!rds.deletionProtection) errors.push('prod requires rds.deletionProtection');
     if (rds.backupRetentionDays < 7) errors.push('prod requires rds.backupRetentionDays of at least 7');
+    if (!config.loadBalancer.deletionProtection) errors.push('prod requires loadBalancer.deletionProtection');
   }
 
   if (errors.length) {

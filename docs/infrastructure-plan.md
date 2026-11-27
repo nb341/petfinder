@@ -1,6 +1,6 @@
 # Infrastructure Plan
 
-> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project), #8 (environment-aware provider and state), #9 (network) and #10 (RDS) are done. `infrastructure/` was then reorganized into modules, stacks and environments. The API compute choice is still open (#13). Work toward ECS Fargate + ALB has started: container images (#27) and the shared ECR registry.
+> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project), #8 (environment-aware provider and state), #9 (network) and #10 (RDS) are done. `infrastructure/` was then reorganized into modules, stacks and environments. API compute is decided (#13): ECS Fargate behind an ALB, with the ui served by nginx on ECS instead of S3 + CloudFront (#11). Done so far: container images (#28), the shared ECR registry (#29) and the load balancer with its security groups. ECS services are next.
 
 ## Goals
 
@@ -94,20 +94,17 @@ floci is a service in `infrastructure/local/docker-compose.yml`, next to Postgre
 
 ## Target Architecture
 
-Everything except compute is independent of the API compute decision.
-
 ```
-                    ┌──────────────┐
-  browser ────────▶ │  CloudFront  │──▶ S3 (apps/ui build, private, OAC)
-                    └──────┬───────┘
-                           │ /api/graphql
-                           ▼
-                    ┌──────────────┐        ┌─────────────────────┐
-                    │ API compute  │──────▶ │ RDS Postgres 17     │
-                    │ (TBD)        │        │ private subnets     │
-                    └──────┬───────┘        └─────────────────────┘
-                           │
-                 Secrets Manager (DB creds) · CloudWatch Logs
+                         ┌───────────── VPC 10.x.0.0/16, 2 AZs ─────────────────────┐
+ browser ── HTTP :80 ──▶ │ ALB (public subnets)                                     │
+                         │   /api, /api/* ──▶ api tasks :3000 ─┐  (public subnets,  │
+                         │   everything else ─▶ ui tasks :8080  │   public IP, SGs   │
+                         │                     (nginx, static)  │   only allow ALB)  │
+                         │                                      ▼                   │
+                         │                      RDS Postgres 17 :5432 (private)     │
+                         └──────────────────────────────────────────────────────────┘
+   ECR petfinder/api, petfinder/ui (shared, immutable tags) ──▶ pulled by tasks
+   Secrets Manager (RDS password) · CloudWatch Logs
 ```
 
 - **Network** (`src/constructs/network.ts`):
@@ -124,11 +121,33 @@ Everything except compute is independent of the API compute decision.
   - Outputs: `db_endpoint`, `db_port`, `db_name` and `db_secret_arn`.
   - Sizes per env: `db.t4g.micro` for `local`, `dev` and `uat`, and `db.t4g.small` for `staging` and `prod`.
   - Backups: 0 days on `local`, 1 on `dev` and `uat`, 7 on `staging` and `prod`. `prod` also has deletion protection and a final snapshot.
-- **UI hosting:** a private S3 bucket behind CloudFront with Origin Access Control (OAC). CloudFront rewrites unknown paths to `index.html` so the Angular app's routing works, and forwards `/api/graphql` to the API origin with POST enabled, caching disabled, and the authorization header forwarded.
+- **Load balancer:**
+  - An internet-facing ALB in the public subnets, listening on HTTP `:80`.
+  - `/api` and `/api/*` go to the api target group (port 3000, health check `/api`). Everything else goes to the ui target group (port 8080, health check `/healthz`).
+  - Target groups use `ip` targets for Fargate and a 30 s deregistration delay. The ALB drops invalid headers and has deletion protection in prod.
+  - HTTPS waits for a domain and ACM certificate.
+- **Security groups:**
+  - `alb`: `80` from the internet, and egress only to `app` on 3000 and `ui` on 8080.
+  - `app` (api): ingress only from `alb`, plus the existing all-egress rule.
+  - `ui`: ingress only from `alb`, and egress only HTTPS for image pulls and logs.
+  - `db`: unchanged, `5432` from `app` only.
+- **UI hosting:** nginx on ECS behind the ALB (see #13 below). This replaces the S3 + CloudFront plan in #11. CloudFront can be added in front of the ALB later for caching and HTTPS.
 - **Observability:** CloudWatch log groups with a set retention period.
 - **Tagging:** default tags `project=petfinder`, `env=<env>` and `managed-by=cdktn`.
 
-### API compute options (decision pending)
+### API compute decision (#13)
+
+**Chosen: ECS Fargate + ALB**, for both the api and the nginx ui.
+- **No code changes:** NestJS runs as a container.
+- **No cold starts.**
+- **Simple database access:** a long-lived connection pool to RDS.
+- **Same deploy for both apps:** the ui uses the same image-based deploy as the api.
+
+**No NAT gateway.** Tasks run in the public subnets with a public IP, so they can pull from ECR and reach AWS APIs. Their security groups accept traffic only from the ALB. RDS stays in the private subnets.
+
+**Cost per environment while deployed:** roughly $16/month for the ALB plus LCUs, and Fargate ARM64 tasks billed per second. NAT costs $0. Environments are destroyed when idle (`npm run destroy:<env>`).
+
+The options as compared before the decision:
 
 | | ECS Fargate + ALB | Lambda + HTTP API Gateway |
 | --- | --- | --- |
