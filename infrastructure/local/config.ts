@@ -1,4 +1,4 @@
-import { EnvironmentConfig, variables } from '../variables';
+import { EnvironmentConfig, registry, RegistryConfig, variables } from '../variables';
 
 const FLOCI_ACCOUNT_ID = '000000000000';
 
@@ -11,3 +11,6 @@ export const localConfig: EnvironmentConfig = {
   networking: { ...variables.dev.networking, cidr: '10.0.0.0/16' },
   rds: { ...variables.dev.rds, backupRetentionDays: 0 }
 };
+
+/** floci's registry is throwaway, so destroy may delete repositories that still hold images. */
+export const localRegistry: RegistryConfig = { ...registry, forceDelete: true };

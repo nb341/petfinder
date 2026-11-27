@@ -1,6 +1,6 @@
 # Infrastructure Plan
 
-> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project), #8 (environment-aware provider and state), #9 (network) and #10 (RDS) are done. `infrastructure/` was then reorganized into modules, stacks and environments. The API compute choice is still open (#13).
+> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project), #8 (environment-aware provider and state), #9 (network) and #10 (RDS) are done. `infrastructure/` was then reorganized into modules, stacks and environments. The API compute choice is still open (#13). Work toward ECS Fargate + ALB has started: container images (#27) and the shared ECR registry.
 
 ## Goals
 
@@ -28,15 +28,17 @@ infrastructure/
 ├── stacks/
 │   ├── base-stack.ts          # abstract BaseStack: config, provider, account guard, S3 state, tags, naming
 │   ├── application-stack.ts   # networking + rds (compute joins in #13)
+│   ├── registry-stack.ts      # account-wide ECR repositories, shared by every environment
+│   ├── state-backend.ts       # S3 or floci state for every deployable stack
 │   └── provider.ts            # AWS provider with standard tags
-├── modules/                   # networking, rds, s3; new modules are added when a ticket needs them
+├── modules/                   # networking, rds, s3, ecr; new modules are added when a ticket needs them
 ├── bootstrap/                 # S3 state bucket, deployed on its own first
 ├── local/                     # docker-compose (Postgres + floci), floci.ts, config.ts
 ├── tests/variables.test.ts    # config defaults, overrides and validation
 └── cdktf.json  package.json  tsconfig.json
 ```
 
-Commands are npm scripts in `infrastructure/`: `npm test`, `npm run synth:<env>`, `diff:<env>`, `deploy:<env>` and `destroy:<env>` for `dev`, `uat`, `staging`, `prod` and `local`, plus `npm run bootstrap` once.
+Commands are npm scripts in `infrastructure/`: `npm test`, `npm run synth:<env>`, `diff:<env>`, `deploy:<env>` and `destroy:<env>` for `dev`, `uat`, `staging`, `prod` and `local`, plus `npm run bootstrap` once. The shared registry has `diff:registry` and `deploy:registry`, and `npm run push:images` builds and pushes the app images.
 
 Optional infrastructure (RDS Proxy, NAT, ECS autoscaling, scheduled Lambdas and so on) is switched on per environment with config flags such as `rdsProxy.enabled`, never by checking the environment name.
 
@@ -62,7 +64,17 @@ Modules take typed props and never read config themselves, so the differences st
 - floci only runs a real Postgres behind RDS if it can reach the Docker daemon through the mounted socket. Without it, the instance reaches `available` and the secret is created, but connections are dropped. On Docker Desktop, turn on Settings → Advanced → "Allow the default Docker socket to be used".
 - floci returns `referenced_security_group_id` as `000000000000/sg-…`, a form AWS uses only for cross-account references. So `npm run diff:local` always shows one harmless in-place update on `db-from-app`. AWS isn't affected, so there's no workaround in code.
 
+- floci's ECR only creates and lists repositories without Docker. Deleting a repository and pushing or pulling images need the Docker socket setting above. Without it, `docker push` gets a 503 and `destroy:registry:local` hangs while the provider retries a 500.
+
 **floci fidelity checked so far:** S3 native state locking (`use_lockfile`) works against floci. Checked on 2026-11-27: a second `tofu apply` failed with "Error acquiring the state lock" while the first was running.
+
+## Container Registry
+
+All environments share one AWS account, so there is one set of ECR repositories, `petfinder/api` and `petfinder/ui`, in the account-wide `registry` stack (state key `shared/registry/terraform.tfstate`). An image is built once from the root `Dockerfile` and the same tag is promoted from dev to uat, staging and prod, so prod runs exactly what was tested.
+
+- Tags are immutable, so a tag always names one image. `push-images.sh` tags with the commit SHA and refuses `latest` and uncommitted trees.
+- Images are scanned on push and encrypted with AES256. Untagged images expire after 1 day, and each repository keeps the last 30 images (`registry.keepImages`).
+- Images are built for `linux/arm64`: Fargate on Graviton costs less than x86 and builds natively on Apple silicon.
 
 ## Messaging
 

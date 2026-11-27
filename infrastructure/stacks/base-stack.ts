@@ -1,9 +1,9 @@
 import { Construct } from 'constructs';
-import { S3Backend, TerraformStack } from 'cdktn';
+import { TerraformStack } from 'cdktn';
 import { localConfig } from '../local/config';
-import { flociBackend } from '../local/floci';
 import { Environment, EnvironmentConfig, validateConfig, variables } from '../variables';
 import { awsProvider } from './provider';
+import { stateBackend } from './state-backend';
 
 /** An AWS environment, or `local` for floci. */
 export type StackEnvironment = Environment | 'local';
@@ -27,19 +27,7 @@ export abstract class BaseStack extends TerraformStack {
 
     validateConfig(environment, this.config);
     awsProvider(this, this.config, environment, component);
-
-    if (this.config.target.kind === 'floci') {
-      flociBackend(this, `${environment}-${component}`);
-    } else {
-      new S3Backend(this, {
-        bucket: this.config.stateBucket,
-        key: `${environment}/${component}/terraform.tfstate`,
-        region: this.config.region,
-        profile: this.config.target.profile,
-        encrypt: true,
-        useLockfile: true
-      });
-    }
+    stateBackend(this, this.config, environment, component);
   }
 
   /** `<project>-<environment>[-<resource>]`. */

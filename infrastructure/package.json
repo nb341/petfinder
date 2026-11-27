@@ -28,7 +28,13 @@
     "deploy:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn deploy local-application --auto-approve",
     "destroy:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn destroy local-application --auto-approve",
     "bootstrap": "./scripts/require-tofu.sh && INFRA_ENV=dev cdktn deploy bootstrap",
-    "bootstrap:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn deploy local-bootstrap --auto-approve"
+    "bootstrap:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn deploy local-bootstrap --auto-approve",
+    "synth:registry": "INFRA_ENV=dev cdktn synth",
+    "diff:registry": "./scripts/require-tofu.sh && INFRA_ENV=dev cdktn diff registry",
+    "deploy:registry": "./scripts/require-tofu.sh && INFRA_ENV=dev cdktn deploy registry",
+    "push:images": "./scripts/push-images.sh",
+    "deploy:registry:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn deploy local-registry --auto-approve",
+    "destroy:registry:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn destroy local-registry --auto-approve"
   },
   "devDependencies": {
     "@cdktn/provider-aws": "~26.0.1",

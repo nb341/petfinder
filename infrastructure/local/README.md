@@ -22,6 +22,7 @@ floci emulates AWS on `http://localhost:4566`. Use it now and then to try cdktn 
 | Wipe emulated resources | `docker compose rm -sf floci && rm -rf .floci` |
 | Smoke test | `./scripts/floci-smoke.sh` |
 | cdktn against floci (from `infrastructure/`) | `npm run bootstrap:local`, then `synth:local`, `diff:local`, `deploy:local`, `destroy:local` |
+| Registry against floci (from `infrastructure/`) | `npm run deploy:registry:local`, `npm run destroy:registry:local` |
 
 - **Image:** pinned to `floci/floci:2.5.0`. Bump it on purpose, never use `latest`.
 - **Ports:** `4566` (AWS API) and `7001-7099` (RDS proxies), bound to `127.0.0.1` only because floci's API is unauthenticated.
@@ -34,6 +35,10 @@ floci emulates AWS on `http://localhost:4566`. Use it now and then to try cdktn 
 
 - `db_endpoint` is floci's internal Docker IP. From your machine, connect to `localhost:<db_port>` instead. `db_port` is a proxy port, `7001` and up.
 - floci reports `referenced_security_group_id` as `000000000000/sg-…`, so `diff:local` always shows one harmless update on `db-from-app`.
+- floci's ECR only creates and lists repositories without Docker. Deleting a repository and pushing or pulling images need the Docker socket setting above. Without it:
+  - `docker push` to `000000000000.dkr.ecr.us-east-1.localhost:4566` gets a 503.
+  - `npm run destroy:registry:local` hangs, because the provider keeps retrying floci's 500 "Backing registry unreachable". Stop it with Ctrl-C.
+  - floci logs "ECR backing registry is unavailable".
 
 ### Point the api at floci RDS
 
