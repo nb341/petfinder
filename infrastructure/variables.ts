@@ -101,7 +101,23 @@ export const variables: Record<Environment, EnvironmentConfig> = {
   }
 };
 
-/** Its profile creates the state bucket that all environments share (one AWS account). */
+export interface RegistryConfig {
+  /** One ECR repository per app image, named `<project>/<name>`. */
+  repositories: string[];
+  /** Tagged images kept per repository; older ones expire. */
+  keepImages: number;
+  /** Lets destroy delete repositories that still hold images. */
+  forceDelete: boolean;
+}
+
+// Shared by every environment: an image is built once and the same tag is promoted dev → prod.
+export const registry: RegistryConfig = {
+  repositories: ['api', 'ui'],
+  keepImages: 30,
+  forceDelete: false
+};
+
+/** Its profile creates the account's shared stacks: the state bucket and the registry. */
 export const bootstrapEnvironment: Environment = 'dev';
 
 export function isEnvironment(value: string): value is Environment {
@@ -171,4 +187,18 @@ export function validateEnvironments(configs: Record<string, EnvironmentConfig>)
       }
     }
   }
+}
+
+export function validateRegistry(config: RegistryConfig): void {
+  const errors: string[] = [];
+  if (!config.repositories.length) errors.push('registry needs at least one repository');
+  config.repositories.forEach((name, i) => {
+    if (config.repositories.indexOf(name) !== i) errors.push(`registry repository "${name}" is listed twice`);
+    if (!/^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(name)) {
+      errors.push(`registry repository "${name}" must be lowercase letters, digits and . _ - separators`);
+    }
+  });
+  if (!Number.isInteger(config.keepImages) || config.keepImages < 1) errors.push('registry.keepImages must be a positive integer');
+
+  if (errors.length) throw new Error(`Invalid registry configuration:\n  - ${errors.join('\n  - ')}`);
 }

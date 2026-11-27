@@ -23,15 +23,19 @@ infrastructure/
 ├── stacks/
 │   ├── base-stack.ts        # abstract BaseStack: config, provider, account guard, state, tags, naming
 │   ├── application-stack.ts # networking + rds
+│   ├── registry-stack.ts    # shared ECR repositories for the app images
+│   ├── state-backend.ts     # S3 (or floci) state backend for every deployable stack
 │   └── provider.ts          # AWS provider with standard tags (shared with bootstrap)
 ├── modules/
 │   ├── networking/          # VPC, subnets, routing, app/db security groups
 │   ├── rds/                 # RDS Postgres, password kept in Secrets Manager by RDS
+│   ├── ecr/                 # ECR repository: immutable tags, scan on push, image expiry
 │   └── s3/                  # private bucket: SSE, public access block, TLS-only
 ├── bootstrap/               # S3 state bucket, deployed on its own first
 ├── local/                   # floci + Postgres for local work (see local/README.md)
 ├── tests/variables.test.ts  # config tests
 ├── scripts/require-tofu.sh  # preflight for diff/deploy/destroy
+├── scripts/push-images.sh   # build the api and ui images and push them to ECR
 └── cdktf.json  package.json  tsconfig.json
 ```
 
@@ -78,7 +82,7 @@ infrastructure/
 
 ### Naming and tags
 
-- **Stack IDs:** `<env>-<component>`, for example `dev-application`.
+- **Stack IDs:** `<env>-<component>`, for example `dev-application`. Account-wide stacks have no env: `bootstrap` and `registry`.
 - **Resource names:** `petfinder-<env>-<resource>`, for example `petfinder-dev-db` or `petfinder-prod-app`. Use `this.resourceName('<resource>')` in a stack.
 - **Construct IDs are part of the Terraform address.** Renaming one or moving it to another parent replaces the resource. Keep them stable, and check the diff for replacements.
 - **Tags on every resource**, set by the provider's `default_tags`:
@@ -93,7 +97,7 @@ infrastructure/
 
 ### State and accounts
 
-- **Remote state:** S3 bucket `petfinder-tfstate-<account id>`, one key per stack: `<env>/<component>/terraform.tfstate`. It uses `encrypt` and `use_lockfile` (OpenTofu's native S3 locking).
+- **Remote state:** S3 bucket `petfinder-tfstate-<account id>`, one key per stack: `<env>/<component>/terraform.tfstate`, or `shared/registry/terraform.tfstate` for the registry. It uses `encrypt` and `use_lockfile` (OpenTofu's native S3 locking).
 - **State bucket:** versioned, encrypted, blocks public access, denies non-TLS requests and has `prevent_destroy`. It's created by `bootstrap/`, whose own state is the git-ignored file `bootstrap/.state/terraform.tfstate`. Back that file up.
 - **Account guard:** each env uses the AWS profile `petfinder-<env>`, and `allowed_account_ids` refuses any account other than `INFRA_AWS_ACCOUNT_ID`.
 - **State is sensitive.** Never commit it. `.gitignore` covers `*.tfstate`, `.state/` and `cdktn.out/`.
@@ -139,13 +143,17 @@ Replace `dev` with `uat`, `staging`, `prod` or `local`.
 | Apply (asks for approval on AWS) | `npm run deploy:dev` |
 | Tear down | `npm run destroy:dev` |
 | Create the state bucket (once) | `npm run bootstrap` |
+| Plan or apply the shared registry | `npm run diff:registry`, `npm run deploy:registry` |
+| Build and push the app images | `npm run push:images` (tag defaults to the commit SHA) |
 
 ## First-time AWS setup
 
 1. Set `INFRA_AWS_ACCOUNT_ID` in the repo's root `.env`. See `.env.example`.
 2. Create the AWS profiles `petfinder-dev`, `petfinder-uat`, `petfinder-staging` and `petfinder-prod` (for example with `aws configure sso`), then log in: `aws sso login --profile petfinder-dev`.
 3. `npm run bootstrap`: creates the state bucket with the `petfinder-dev` profile.
-4. `npm run diff:dev`, then `npm run deploy:dev`.
+4. `npm run deploy:registry`: creates the ECR repositories, also with `petfinder-dev`.
+5. `npm run push:images`: needs the AWS CLI (`brew install awscli`) and a clean git tree.
+6. `npm run diff:dev`, then `npm run deploy:dev`.
 
 ## What's deployed
 
@@ -154,6 +162,12 @@ The `application` stack in each env contains:
 - **Networking:** a VPC across 2 AZs, with a public and a private `/24` subnet in each. Only the public route table routes to the internet gateway. NAT is off (`networking.singleNatGateway`). The `app` security group allows egress only, and the `db` security group allows only the database port from `app`.
 - **Database:** RDS Postgres 17 on `gp3`, with the master password in Secrets Manager (`manage_master_user_password`).
 - **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id`, `db_security_group_id`, `db_endpoint`, `db_port`, `db_name` and `db_secret_arn`.
+
+The account-wide `registry` stack contains:
+
+- **ECR repositories** `petfinder/api` and `petfinder/ui`, shared by every env. An image is built once and the same tag is promoted from dev to prod, so prod runs exactly what was tested. Tags are immutable, images are scanned on push and encrypted, untagged images expire after a day, and only the last `registry.keepImages` (30) are kept.
+- **Images** are built for `linux/arm64`, because Fargate on Graviton is cheaper than x86 and builds natively on Apple silicon. `push-images.sh` refuses the tag `latest` and an uncommitted tree, so every tag names one commit.
+- **Outputs:** `api_repository_url` and `ui_repository_url`.
 
 ## Verifying a change
 

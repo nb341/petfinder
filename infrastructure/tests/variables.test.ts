@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
-import { localConfig } from '../local/config';
-import { EnvironmentConfig, ENVIRONMENTS, validateConfig, validateEnvironments, variables } from '../variables';
+import { localConfig, localRegistry } from '../local/config';
+import { EnvironmentConfig, ENVIRONMENTS, registry, RegistryConfig, validateConfig, validateEnvironments, validateRegistry, variables } from '../variables';
 
 const valid = (overrides: Partial<EnvironmentConfig> = {}): EnvironmentConfig => ({
   ...variables.dev,
@@ -109,5 +109,43 @@ describe('validateEnvironments', () => {
   it('rejects overlapping VPC ranges', () => {
     const overlapping = { ...variables, uat: { ...variables.uat, networking: { ...variables.uat.networking, cidr: '10.10.0.0/20' } } };
     assert.throws(() => validateEnvironments(overlapping), /"dev" overlaps "uat"/);
+  });
+});
+
+describe('registry', () => {
+  const registryErrorFor = (config: RegistryConfig): string => {
+    try {
+      validateRegistry(config);
+    } catch (error) {
+      return (error as Error).message;
+    }
+    return '';
+  };
+
+  it('holds one repository per app image, shared by every environment', () => {
+    assert.deepEqual(registry.repositories, ['api', 'ui']);
+    assert.equal(registry.forceDelete, false);
+    assert.ok(registry.keepImages > 0);
+  });
+
+  it('lets local repositories be destroyed with their images', () => {
+    assert.equal(localRegistry.forceDelete, true);
+    assert.deepEqual(localRegistry.repositories, registry.repositories);
+  });
+
+  it('accepts the defined registries', () => {
+    assert.doesNotThrow(() => validateRegistry(registry));
+    assert.doesNotThrow(() => validateRegistry(localRegistry));
+  });
+
+  it('rejects an empty, duplicated or invalid repository list', () => {
+    assert.match(registryErrorFor({ ...registry, repositories: [] }), /at least one repository/);
+    assert.match(registryErrorFor({ ...registry, repositories: ['api', 'api'] }), /"api" is listed twice/);
+    assert.match(registryErrorFor({ ...registry, repositories: ['Api'] }), /"Api" must be lowercase/);
+  });
+
+  it('requires a positive number of images to keep', () => {
+    assert.match(registryErrorFor({ ...registry, keepImages: 0 }), /keepImages/);
+    assert.match(registryErrorFor({ ...registry, keepImages: 1.5 }), /keepImages/);
   });
 });

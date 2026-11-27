@@ -7,6 +7,7 @@ const FLOCI_SERVICES = [
   'apigatewayv2',
   'cloudfront',
   'ec2',
+  'ecr',
   'ecs',
   'elbv2',
   'iam',
