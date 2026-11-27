@@ -1,0 +1,41 @@
+name: Performance
+description: Speed, load, bundle size or query efficiency work
+title: "[Performance] "
+labels: ["performance"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is needed and why.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Gherkin scenarios covering the happy path, edge cases and error cases. They become the `.feature` file for this ticket.
+      render: gherkin
+      value: |
+        @performance
+        Feature: <capability>
+          As an adopter
+          I want <goal>
+          So that <benefit>
+
+          Scenario: <happy path>
+            Given <context>
+            When I open the pet listings page on a 4G connection
+            Then the page is interactive within 2 seconds
+
+          Scenario: <edge or error case>
+            Given <context>
+            When <action>
+            Then <observable outcome>
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Out of scope, dependencies, links or designs.

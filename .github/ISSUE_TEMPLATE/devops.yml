@@ -1,0 +1,41 @@
+name: DevOps
+description: Infrastructure, CI/CD, Docker or tooling work
+title: "[DevOps] "
+labels: ["devops"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is needed and why.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Gherkin scenarios covering the happy path, edge cases and error cases. They become the `.feature` file for this ticket.
+      render: gherkin
+      value: |
+        @infra
+        Feature: <capability>
+          As a developer
+          I want <goal>
+          So that <benefit>
+
+          Scenario: <happy path>
+            Given <context>
+            When I run "docker compose up -d"
+            Then the "petfinder-postgres" container reports "healthy"
+
+          Scenario: <edge or error case>
+            Given <context>
+            When <action>
+            Then <observable outcome>
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Out of scope, dependencies, links or designs.

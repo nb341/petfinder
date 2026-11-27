@@ -1,0 +1,41 @@
+name: Backend
+description: NestJS api (apps/api) work
+title: "[Backend] "
+labels: ["backend"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is needed and why.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria
+      description: Gherkin scenarios covering the happy path, edge cases and error cases. They become the `.feature` file for this ticket.
+      render: gherkin
+      value: |
+        @api
+        Feature: <capability>
+          As an API client
+          I want <goal>
+          So that <benefit>
+
+          Scenario: <happy path>
+            Given <context>
+            When I send GET "/api/pets"
+            Then the response status is 200
+
+          Scenario: <edge or error case>
+            Given <context>
+            When <action>
+            Then <observable outcome>
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Out of scope, dependencies, links or designs.
