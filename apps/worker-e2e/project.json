@@ -1,0 +1,25 @@
+{
+  "name": "worker-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "implicitDependencies": [
+    "worker"
+  ],
+  "projectType": "application",
+  "targets": {
+    "e2e": {
+      "command": "jest",
+      "options": {
+        "cwd": "apps/worker-e2e"
+      },
+      "outputs": [
+        "{workspaceRoot}/coverage/{e2eProjectRoot}"
+      ],
+      "dependsOn": [
+        "worker:build"
+      ]
+    }
+  },
+  "tags": [
+    "type:e2e"
+  ]
+}

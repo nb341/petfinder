@@ -21,7 +21,9 @@ petfinder/
 │   ├── ui/            # Angular frontend          → http://localhost:4200
 │   ├── ui-e2e/        # BDD acceptance tests for ui (Gherkin + Playwright, with videos)
 │   ├── api/           # NestJS backend            → http://localhost:3000/api
-│   └── api-e2e/       # BDD acceptance tests for api (Gherkin + jest-cucumber)
+│   ├── api-e2e/       # BDD acceptance tests for api (Gherkin + jest-cucumber)
+│   ├── worker/        # Headless NestJS worker for background jobs (no HTTP)
+│   └── worker-e2e/    # BDD acceptance tests for worker (Gherkin + jest-cucumber)
 ├── infrastructure/    # AWS infrastructure (standalone cdktn package) + local/ services, see infrastructure/README.md
 ├── libs/
 │   └── shared/
@@ -120,16 +122,23 @@ To run only the backend:
 npx nx serve api
 ```
 
+To run the background worker, which has no HTTP server and stops cleanly on `SIGTERM`:
+
+```bash
+npx nx serve worker
+```
+
 ## Common Commands
 
 | Task                    | Command                          |
 | ----------------------- | -------------------------------- |
 | Serve ui + api          | `npx nx serve ui`                |
 | Serve api only          | `npx nx serve api`               |
-| Build a project         | `npx nx build ui` / `npx nx build api` |
+| Serve worker            | `npx nx serve worker`            |
+| Build a project         | `npx nx build ui` / `npx nx build api` / `npx nx build worker` |
 | Build everything        | `npx nx run-many -t build`       |
 | Unit tests (all)        | `npx nx run-many -t test`        |
-| e2e tests               | `npx nx e2e ui-e2e` / `npx nx e2e api-e2e` |
+| e2e tests               | `npx nx e2e ui-e2e` / `npx nx e2e api-e2e` / `npx nx e2e worker-e2e` |
 | Lint (all)              | `npx nx run-many -t lint`        |
 | Only affected projects  | `npx nx affected -t test lint build` |
 | Project graph           | `npx nx graph`                   |
@@ -152,10 +161,11 @@ Claude Code follows this workflow through the `bdd-tdd` skill in `.claude/skills
 | --- | --- | --- | --- |
 | UI acceptance | `apps/ui-e2e/src/features/*.feature` | `apps/ui-e2e/src/steps/*.steps.ts` | `npx nx e2e ui-e2e` |
 | API acceptance | `apps/api-e2e/src/features/*.feature` | `apps/api-e2e/src/steps/*.steps.ts` | `npx nx e2e api-e2e` |
+| Worker acceptance | `apps/worker-e2e/src/features/*.feature` | `apps/worker-e2e/src/steps/*.steps.ts` | `npx nx e2e worker-e2e` |
 | API ↔ database | `apps/api/src/database/features/*.feature` | `apps/api/src/**/*.int.spec.ts` | `npx nx test-integration api` (needs Postgres running) |
 | Unit tests | n/a | `*.spec.ts` next to the code | `npx nx run-many -t test` |
 
-Both e2e commands start the apps they need. UI e2e tests run on Chromium. Install the browser once with `npx playwright install chromium`.
+The e2e commands start the apps they need. UI e2e tests run on Chromium. Install the browser once with `npx playwright install chromium`.
 
 ### Feature videos
 
