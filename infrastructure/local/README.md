@@ -2,10 +2,11 @@
 
 Everything here is for running things on your machine. None of it is used by the AWS environments.
 
-- `docker-compose.yml`: Postgres 17 for day-to-day api development, and [floci](https://floci.io/aws/), a local AWS emulator. With `--profile apps` it also runs the `api` and `ui` images from the root `Dockerfile`, with the ui on `http://localhost:8080`.
+- `docker-compose.yml`: Postgres 17 (built from `postgres/Dockerfile`, with PostGIS, pgvector and btree_gist) for day-to-day api development, and [floci](https://floci.io/aws/), a local AWS emulator. With `--profile apps` it also runs the `api` and `ui` images from the root `Dockerfile`, with the ui on `http://localhost:8080`.
 - `nginx/api-proxy.conf`: proxies `/api` to the api container. The ui calls relative URLs like `/api/pets` on its own origin. In AWS the load balancer sends `/api` to the api and everything else to nginx. Compose has no load balancer, so this snippet plays that role. It isn't in the ui image, which only serves static files.
 - `floci.ts`: the only code that knows about floci (its endpoints, test credentials and local state). The stacks use it only when `INFRA_ENV=local`.
 - `config.ts`: settings for the `local` env, which is dev's config pointed at floci.
+- `scripts/`: `dev.sh`, `local-up.sh`, `setup-aws.sh` and `local-reset.sh` back the root `npm run dev`, `local:up` and `local:reset` scripts (see the root README). `setup-aws.sh` creates the S3 bucket, Cognito pool, client and demo user the apps use, and writes their ids to the git-ignored `.env.aws`.
 
 Run `docker compose` commands from this folder. Compose reads the repo's root `.env`.
 

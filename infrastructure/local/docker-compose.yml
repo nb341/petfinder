@@ -2,7 +2,8 @@ name: petfinder
 
 services:
   postgres:
-    image: postgres:17-alpine
+    build: ./postgres
+    image: petfinder-postgres:local
     container_name: petfinder-postgres
     restart: unless-stopped
     # Compose only reads .env next to this file, so the root .env is passed in explicitly.

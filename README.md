@@ -35,7 +35,8 @@ petfinder/
 
 - [Node.js](https://nodejs.org) (LTS recommended; developed on Node 25 / npm 11)
 - npm
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) for the Postgres database
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) for Postgres and floci
+- `curl` and [`jq`](https://jqlang.org) (`brew install jq`), used by the local setup scripts
 
 You don't need a global Nx install. Every command below runs through `npx nx`.
 
@@ -45,9 +46,27 @@ You don't need a global Nx install. Every command below runs through `npx nx`.
 git clone https://github.com/nb341/petfinder.git
 cd petfinder
 npm install
-cp .env.example .env
-cd infrastructure/local && docker compose up -d && cd ../..   # start Postgres and floci (see below)
+npm run dev
 ```
+
+`npm run dev` is the one command for local development. It:
+
+1. creates `.env` from `.env.example` if you don't have one;
+2. starts Postgres (with PostGIS and pgvector) and floci, and waits until both are healthy;
+3. creates the local AWS resources in floci: the photos bucket, a Cognito user pool and app client, and a demo user;
+4. runs the database migrations;
+5. serves the api (http://localhost:3000/api) and the ui (http://localhost:4200) with hot reload.
+
+Sign in locally as `demo@petfinder.local` / `Petfinder1!`.
+
+| Task | Command |
+| --- | --- |
+| Start everything and serve the apps | `npm run dev` |
+| Start only Postgres and floci, with AWS resources | `npm run local:up` |
+| Run pending migrations | `npm run db:migrate` |
+| Revert the last migration | `npm run db:revert` |
+| Stop the containers (data kept) | `npm run local:down` |
+| Wipe all local data and start over | `npm run local:reset` |
 
 ## Local Services (Docker)
 
@@ -55,8 +74,8 @@ All local services are defined in one file, `infrastructure/local/docker-compose
 
 | Service    | What it is                                   | Address                 |
 | ---------- | -------------------------------------------- | ----------------------- |
-| `postgres` | Postgres 17 for day-to-day api development   | `localhost:5432`        |
-| `floci`    | Local AWS emulator for infrastructure work   | `http://localhost:4566` |
+| `postgres` | Postgres 17 with PostGIS, pgvector and btree_gist | `localhost:5432`   |
+| `floci`    | Local AWS emulator: S3 and Cognito for the apps, and infrastructure work | `http://localhost:4566` |
 | `api`, `ui` | The production images (opt-in `apps` profile) | `http://localhost:8080` |
 
 | Task                  | Command                                                  |
@@ -97,7 +116,20 @@ With the `apps` profile, compose serves the ui on `http://localhost:8080` and pr
 
 To change the credentials, edit the root `.env`. Compose passes it to the container with `env_file`. Compose doesn't read the root `.env` for the port mapping, so change the host port with `POSTGRES_PORT=5433 docker compose up -d`. Data persists in the `petfinder_postgres-data` Docker volume.
 
+The image is built from `infrastructure/local/postgres/Dockerfile`. It's based on `postgres:17-bookworm`, because `postgis/postgis` publishes amd64 images only. If your volume was created by the old `postgres:17-alpine` image, run `npm run local:reset` once: Alpine and Debian sort text differently, so existing text indexes can be wrong.
+
 ### Local AWS (floci)
+
+`npm run local:up` (and `npm run dev`) runs `infrastructure/local/scripts/setup-aws.sh`. It creates these resources in floci and writes their ids to `infrastructure/local/.env.aws`, which `npm run dev` exports to the apps:
+
+| Variable | Value |
+| --- | --- |
+| `AWS_ENDPOINT_URL`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | `http://localhost:4566`, `us-east-1`, `test`, `test` |
+| `PHOTOS_BUCKET` | `petfinder-local-photos`, with CORS for uploads from `http://localhost:4200` |
+| `COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID` | the `petfinder-local` pool and its `petfinder-ui` public client (code flow with PKCE) |
+| `COGNITO_ISSUER` | `http://localhost:4566/<pool id>`, which serves `/.well-known/openid-configuration` |
+
+The script is safe to re-run: it reuses resources that already exist.
 
 floci emulates AWS locally. See [infrastructure/local/README.md](infrastructure/local/README.md). For the AWS infrastructure itself, see [infrastructure/README.md](infrastructure/README.md).
 
@@ -198,7 +230,7 @@ erDiagram
 
 ### Migrations
 
-The schema is changed only through migrations (`synchronize` is off). When `DB_RUN_MIGRATIONS=true` (the default in `.env.example`), the api applies pending migrations on startup.
+The schema is changed only through migrations (`synchronize` is off). `npm run db:migrate` starts Postgres if needed and applies pending migrations. When `DB_RUN_MIGRATIONS=true` (the default in `.env.example`), the api also applies them on startup.
 
 ```bash
 npx nx migration-generate api --args="--name=AddPetColour"   # diff entities against the DB

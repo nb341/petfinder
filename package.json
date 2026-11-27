@@ -1,6 +1,14 @@
 {
   "name": "petfinder",
   "version": "1.0.0",
+  "scripts": {
+    "dev": "infrastructure/local/scripts/dev.sh",
+    "local:up": "infrastructure/local/scripts/local-up.sh",
+    "local:down": "docker compose -f infrastructure/local/docker-compose.yml stop",
+    "local:reset": "infrastructure/local/scripts/local-reset.sh",
+    "db:migrate": "docker compose -f infrastructure/local/docker-compose.yml up -d --build --wait postgres && nx run api:migration-run --output-style=stream",
+    "db:revert": "nx run api:migration-revert --output-style=stream"
+  },
   "description": "A project for finding pets.",
   "main": "index.js",
   "repository": {
