@@ -1,0 +1,12 @@
+# Based on cdktn-cli's TypeScript template. *.js/*.d.ts are omitted because nothing compiles in place.
+cdktn.out/
+cdktf.out/
+cdktf.log
+cdktn.log
+.gen/
+.terraform/
+.state/
+*terraform.*.tfstate*
+*.tfstate
+*.tfstate.*
+tsconfig.tsbuildinfo

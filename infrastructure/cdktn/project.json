@@ -119,6 +119,43 @@
         }
       }
     },
+    "bootstrap": {
+      "command": "./scripts/require-tofu.sh && cdktn deploy petfinder-bootstrap --auto-approve",
+      "options": {
+        "cwd": "infrastructure/cdktn",
+        "env": {
+          "INFRA_ENV": "local"
+        }
+      },
+      "defaultConfiguration": "local",
+      "configurations": {
+        "local": {
+          "env": {
+            "INFRA_ENV": "local"
+          }
+        },
+        "dev": {
+          "env": {
+            "INFRA_ENV": "dev"
+          }
+        },
+        "uat": {
+          "env": {
+            "INFRA_ENV": "uat"
+          }
+        },
+        "staging": {
+          "env": {
+            "INFRA_ENV": "staging"
+          }
+        },
+        "prod": {
+          "env": {
+            "INFRA_ENV": "prod"
+          }
+        }
+      }
+    },
     "destroy": {
       "command": "./scripts/require-tofu.sh && cdktn destroy petfinder-$INFRA_ENV --auto-approve",
       "options": {
