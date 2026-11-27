@@ -68,6 +68,38 @@ Each env gets a VPC across `us-east-1a` and `us-east-1b`, with 2 public and 2 pr
 - **Security groups:** `app` (for API compute) and `db` (`5432` only from `app`).
 - **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id` and `db_security_group_id`.
 
+### Database
+
+RDS Postgres 17 runs in the private subnets, attached to the `db` security group. RDS generates the master password and stores it in Secrets Manager (`manage_master_user_password`), so it never appears in code, state or outputs.
+- **Outputs:** `db_endpoint`, `db_port`, `db_name` and `db_secret_arn`.
+- **Secret:** a JSON object with `username` and `password`.
+
+#### Point the api at floci RDS
+
+floci runs a real Postgres for the instance, using the Docker socket. On Docker Desktop, enable Settings → Advanced → "Allow the default Docker socket to be used", then run `docker compose restart floci`. After `npx nx deploy infra -c local`, run this from the repo root:
+
+```bash
+cd infrastructure/cdktn/cdktn.out/stacks/petfinder-local
+PORT=$(tofu output -raw db_port)            # floci proxy port, 7001+
+SECRET=$(tofu output -raw db_secret_arn)
+curl -s --aws-sigv4 "aws:amz:us-east-1:secretsmanager" --user test:test \
+  -H 'X-Amz-Target: secretsmanager.GetSecretValue' -H 'Content-Type: application/x-amz-json-1.1' \
+  -d "{\"SecretId\":\"$SECRET\"}" http://localhost:4566/ | jq -r '.SecretString | fromjson | .password | @uri'
+cd -
+```
+
+Then set these in the root `.env`, using the URL-encoded password from above. Use `localhost`, not `db_endpoint`, because floci reports its internal Docker IP:
+
+```bash
+DATABASE_URL=postgresql://petfinder:<password>@localhost:<PORT>/petfinder
+TEST_DATABASE_URL=postgresql://petfinder:<password>@localhost:<PORT>/petfinder_test
+DB_RUN_MIGRATIONS=false
+```
+
+Run `npx nx migration-run api` to create the tables, `npx nx serve api` to start the api against floci RDS, and `npx nx test-integration api` to run the data model tests. To go back to the plain Postgres container, restore the `localhost:5432` URLs from `.env.example`.
+
+On AWS, Postgres 17 enforces TLS (`rds.force_ssl` is on by default), so the api needs SSL settings before it can connect there. That comes with the compute work in #13.
+
 ### Verifying a change
 
 Infra code has no automated tests. Check a change with `cdktn synth` and `cdktn diff`:

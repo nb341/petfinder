@@ -59,6 +59,8 @@ Each construct takes a typed config object, so the differences stay in `src/conf
 **Bootstrap state:** the bootstrap stack can't keep its state in the bucket it creates, so its state is a git-ignored local file, `.state/bootstrap-aws.tfstate`. Back it up. If it's lost, re-import the bucket with `tofu import`.
 
 **floci gaps:**
+- floci reports `db_endpoint` as its internal Docker IP (for example `172.25.0.3`). From the host, connect to `localhost:<db_port>` instead. `db_port` is the proxy port, `7001` and up.
+- floci only runs a real Postgres behind RDS if it can reach the Docker daemon through the mounted socket. Without it, the instance reaches `available` and the secret is created, but connections are dropped. On Docker Desktop, turn on Settings → Advanced → "Allow the default Docker socket to be used".
 - floci returns `referenced_security_group_id` as `000000000000/sg-…`, a form AWS uses only for cross-account references. So `nx plan infra -c local` always shows one harmless in-place update on `db-from-app`. AWS isn't affected, so there's no workaround in code.
 
 **floci fidelity checked so far:** S3 native state locking (`use_lockfile`) works against floci. Checked on 2026-11-27: a second `tofu apply` failed with "Error acquiring the state lock" while the first was running.
@@ -106,7 +108,13 @@ Everything except compute is independent of the API compute decision.
   - NAT is a per-env config flag, `nat: 'none' | 'single'`. Every env is `none` until the compute decision (#13).
   - The default security group is managed with no rules.
   - There are two baseline security groups. `app` has no ingress yet and all egress. `db` allows `5432` only from `app` and has no egress.
-- **Database:** RDS Postgres 17 in private subnets. Its security group allows traffic only from the compute security group. The credentials are generated and stored in Secrets Manager, never in code or state outputs.
+- **Database** (`src/constructs/database.ts`):
+  - RDS Postgres 17 in the private subnets, attached to the `db` security group (`5432` from `app` only).
+  - The instance is `publicly_accessible = false`, encrypted, on `gp3`.
+  - `manage_master_user_password` makes RDS generate the master password and keep it in a Secrets Manager secret, so it never appears in code, state or outputs.
+  - Outputs: `db_endpoint`, `db_port`, `db_name` and `db_secret_arn`.
+  - Sizes per env: `db.t4g.micro` for `local`, `dev` and `uat`, and `db.t4g.small` for `staging` and `prod`.
+  - Backups: 0 days on `local`, 1 on `dev` and `uat`, 7 on `staging` and `prod`. `prod` also has deletion protection and a final snapshot.
 - **UI hosting:** a private S3 bucket behind CloudFront with Origin Access Control (OAC). CloudFront rewrites unknown paths to `index.html` so the Angular app's routing works, and forwards `/api/graphql` to the API origin with POST enabled, caching disabled, and the authorization header forwarded.
 - **Observability:** CloudWatch log groups with a set retention period.
 - **Tagging:** default tags `project=petfinder`, `env=<env>` and `managed-by=cdktn`.
