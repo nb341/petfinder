@@ -17,7 +17,7 @@ defineFeature(feature, (test) => {
   let error: unknown;
 
   beforeAll(async () => {
-    db = await new DataSource(dataSourceOptions(testDatabaseUrl())).initialize();
+    db = await new DataSource(dataSourceOptions({ url: testDatabaseUrl() })).initialize();
   });
 
   afterAll(() => db?.destroy());
