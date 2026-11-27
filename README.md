@@ -22,7 +22,7 @@ petfinder/
 │   ├── ui-e2e/        # BDD acceptance tests for ui (Gherkin + Playwright, with videos)
 │   ├── api/           # NestJS backend            → http://localhost:3000/api
 │   └── api-e2e/       # BDD acceptance tests for api (Gherkin + jest-cucumber)
-├── infrastructure/    # Local services (docker-compose.yml: Postgres + floci), see infrastructure/README.md
+├── infrastructure/    # Local services (Postgres + floci) and the cdktn `infra` project, see infrastructure/README.md
 ├── libs/
 │   └── shared/
 │       └── models/    # Shared types/DTOs, imported as `models`

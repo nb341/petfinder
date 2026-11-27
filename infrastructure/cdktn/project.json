@@ -1,0 +1,160 @@
+{
+  "name": "infra",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "infrastructure/cdktn/src",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "synth": {
+      "command": "cdktn synth",
+      "options": {
+        "cwd": "infrastructure/cdktn",
+        "env": {
+          "INFRA_ENV": "local"
+        }
+      },
+      "outputs": [
+        "{projectRoot}/cdktn.out"
+      ],
+      "defaultConfiguration": "local",
+      "configurations": {
+        "local": {
+          "env": {
+            "INFRA_ENV": "local"
+          }
+        },
+        "dev": {
+          "env": {
+            "INFRA_ENV": "dev"
+          }
+        },
+        "uat": {
+          "env": {
+            "INFRA_ENV": "uat"
+          }
+        },
+        "staging": {
+          "env": {
+            "INFRA_ENV": "staging"
+          }
+        },
+        "prod": {
+          "env": {
+            "INFRA_ENV": "prod"
+          }
+        }
+      }
+    },
+    "plan": {
+      "command": "./scripts/require-tofu.sh && cdktn diff petfinder-$INFRA_ENV",
+      "options": {
+        "cwd": "infrastructure/cdktn",
+        "env": {
+          "INFRA_ENV": "local"
+        }
+      },
+      "defaultConfiguration": "local",
+      "configurations": {
+        "local": {
+          "env": {
+            "INFRA_ENV": "local"
+          }
+        },
+        "dev": {
+          "env": {
+            "INFRA_ENV": "dev"
+          }
+        },
+        "uat": {
+          "env": {
+            "INFRA_ENV": "uat"
+          }
+        },
+        "staging": {
+          "env": {
+            "INFRA_ENV": "staging"
+          }
+        },
+        "prod": {
+          "env": {
+            "INFRA_ENV": "prod"
+          }
+        }
+      }
+    },
+    "deploy": {
+      "command": "./scripts/require-tofu.sh && cdktn deploy petfinder-$INFRA_ENV --auto-approve",
+      "options": {
+        "cwd": "infrastructure/cdktn",
+        "env": {
+          "INFRA_ENV": "local"
+        }
+      },
+      "defaultConfiguration": "local",
+      "configurations": {
+        "local": {
+          "env": {
+            "INFRA_ENV": "local"
+          }
+        },
+        "dev": {
+          "env": {
+            "INFRA_ENV": "dev"
+          }
+        },
+        "uat": {
+          "env": {
+            "INFRA_ENV": "uat"
+          }
+        },
+        "staging": {
+          "env": {
+            "INFRA_ENV": "staging"
+          }
+        },
+        "prod": {
+          "env": {
+            "INFRA_ENV": "prod"
+          }
+        }
+      }
+    },
+    "destroy": {
+      "command": "./scripts/require-tofu.sh && cdktn destroy petfinder-$INFRA_ENV --auto-approve",
+      "options": {
+        "cwd": "infrastructure/cdktn",
+        "env": {
+          "INFRA_ENV": "local"
+        }
+      },
+      "defaultConfiguration": "local",
+      "configurations": {
+        "local": {
+          "env": {
+            "INFRA_ENV": "local"
+          }
+        },
+        "dev": {
+          "env": {
+            "INFRA_ENV": "dev"
+          }
+        },
+        "uat": {
+          "env": {
+            "INFRA_ENV": "uat"
+          }
+        },
+        "staging": {
+          "env": {
+            "INFRA_ENV": "staging"
+          }
+        },
+        "prod": {
+          "env": {
+            "INFRA_ENV": "prod"
+          }
+        }
+      }
+    }
+  }
+}

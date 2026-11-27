@@ -1,0 +1,14 @@
+{
+  "extends": [
+    "../../.oxlintrc.json"
+  ],
+  "plugins": [
+    "jest"
+  ],
+  "rules": {
+    "jest/no-standalone-expect": [
+      "error",
+      { "additionalTestBlockFunctions": ["given", "when", "then", "and", "but"] }
+    ]
+  }
+}
