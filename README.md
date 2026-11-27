@@ -22,6 +22,7 @@ petfinder/
 │   ├── ui-e2e/        # BDD acceptance tests for ui (Gherkin + Playwright, with videos)
 │   ├── api/           # NestJS backend            → http://localhost:3000/api
 │   └── api-e2e/       # BDD acceptance tests for api (Gherkin + jest-cucumber)
+├── infrastructure/    # Local services (docker-compose.yml: Postgres + floci), see infrastructure/README.md
 ├── libs/
 │   └── shared/
 │       └── models/    # Shared types/DTOs, imported as `models`
@@ -45,17 +46,28 @@ git clone https://github.com/nb341/petfinder.git
 cd petfinder
 npm install
 cp .env.example .env
-docker compose up -d      # start Postgres (see Database below)
+cd infrastructure && docker compose up -d && cd ..   # start Postgres and floci (see below)
 ```
 
-## Database (Postgres via Docker)
+## Local Services (Docker)
 
-Postgres 17 runs in Docker, as defined in `docker-compose.yml`. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+All local services are defined in one file, `infrastructure/docker-compose.yml`. Run the `docker compose` commands below from `infrastructure/`. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
 
-```bash
-cp .env.example .env      # first time only; .env is git-ignored
-docker compose up -d      # start Postgres in the background
-```
+| Service    | What it is                                   | Address                 |
+| ---------- | -------------------------------------------- | ----------------------- |
+| `postgres` | Postgres 17 for day-to-day api development   | `localhost:5432`        |
+| `floci`    | Local AWS emulator for infrastructure work   | `http://localhost:4566` |
+
+| Task                  | Command                                                  |
+| --------------------- | -------------------------------------------------------- |
+| Start everything      | `docker compose up -d`                                   |
+| Start only Postgres   | `docker compose up -d postgres`                          |
+| Stop                  | `docker compose down`                                    |
+| Stop + wipe Postgres  | `docker compose down -v`                                 |
+| Logs                  | `docker compose logs -f postgres`                        |
+| psql shell            | `docker compose exec postgres psql -U petfinder -d petfinder` |
+
+### Database (Postgres)
 
 | Setting  | Default                                                  |
 | -------- | -------------------------------------------------------- |
@@ -65,15 +77,11 @@ docker compose up -d      # start Postgres in the background
 | Database | `petfinder`                                              |
 | URL      | `postgresql://petfinder:petfinder@localhost:5432/petfinder` |
 
-To change these, edit `.env`. Data persists in the `postgres-data` Docker volume.
+To change the credentials, edit the root `.env`. Compose passes it to the container with `env_file`. Compose doesn't read the root `.env` for the port mapping, so change the host port with `POSTGRES_PORT=5433 docker compose up -d`. Data persists in the `petfinder_postgres-data` Docker volume.
 
-| Task               | Command                                                  |
-| ------------------ | -------------------------------------------------------- |
-| Start              | `docker compose up -d`                                   |
-| Stop               | `docker compose down`                                    |
-| Stop + wipe data   | `docker compose down -v`                                 |
-| Logs               | `docker compose logs -f postgres`                        |
-| psql shell         | `docker compose exec postgres psql -U petfinder -d petfinder` |
+### Local AWS (floci)
+
+floci emulates AWS for infrastructure work. See [infrastructure/README.md](infrastructure/README.md).
 
 ## Running the App
 
