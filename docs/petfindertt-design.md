@@ -272,8 +272,8 @@ The model is a pure function in `libs/shared/domain`, so it is unit and property
 | data | RDS PostgreSQL, S3 photo bucket |
 | messaging | Private Redis broker on AWS with persistence and TLS, event stream, consumer group and dead-letter stream |
 | auth | Cognito user pool, app client, managed login, Google IdP |
-| compute | ECR, ECS cluster, Fargate services (api, worker), ALB |
-| edge | S3 + CloudFront for the Angular build, `/api/graphql` routed to the ALB with caching disabled and authorization headers forwarded |
+| compute | ECR, ECS cluster, Fargate services (api, ui on nginx, worker), ALB |
+| edge | ALB routing `/api` to the api service and everything else to the nginx ui service; CloudFront, ACM and a custom domain later |
 
 One codebase targets both environments: `TARGET=floci` points the AWS provider at `localhost:4566`; otherwise it deploys to AWS with remote state.
 

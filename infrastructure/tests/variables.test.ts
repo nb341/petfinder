@@ -29,6 +29,10 @@ describe('defaults', () => {
       assert.equal(config.rds.engineVersion, '17');
       assert.equal(config.rds.port, 5432);
       assert.equal(config.networking.singleNatGateway, false);
+      assert.deepEqual(config.services, {
+        api: { port: 3000, healthCheckPath: '/api' },
+        ui: { port: 8080, healthCheckPath: '/healthz' }
+      });
     }
   });
 
@@ -56,6 +60,13 @@ describe('environment overrides', () => {
   it('protects prod', () => {
     assert.equal(variables.prod.rds.deletionProtection, true);
     assert.ok(variables.prod.rds.backupRetentionDays >= 7);
+    assert.equal(variables.prod.loadBalancer.deletionProtection, true);
+  });
+
+  it('leaves the load balancer deletable outside prod', () => {
+    for (const environment of ['dev', 'uat', 'staging'] as const) {
+      assert.equal(variables[environment].loadBalancer.deletionProtection, false);
+    }
   });
 
   it('points local at floci', () => {
@@ -92,6 +103,23 @@ describe('validateConfig', () => {
     assert.match(message, /allocatedStorage/);
     assert.match(message, /backupRetentionDays/);
     assert.match(message, /rds\.port/);
+  });
+
+  it('rejects service ports the non-root containers cannot bind, or that collide', () => {
+    const services = (api: number, ui: number) =>
+      valid({ services: { api: { ...variables.dev.services.api, port: api }, ui: { ...variables.dev.services.ui, port: ui } } });
+    assert.match(errorFor('dev', services(80, 8080)), /services\.api\.port must be between 1024 and 65535/);
+    assert.match(errorFor('dev', services(3000, 70000)), /services\.ui\.port must be between 1024 and 65535/);
+    assert.match(errorFor('dev', services(3000, 3000)), /services\.api\.port and services\.ui\.port must differ/);
+  });
+
+  it('requires absolute health check paths', () => {
+    const config = valid({ services: { ...variables.dev.services, ui: { ...variables.dev.services.ui, healthCheckPath: 'healthz' } } });
+    assert.match(errorFor('dev', config), /services\.ui\.healthCheckPath must start with "\/"/);
+  });
+
+  it('refuses a prod load balancer without deletion protection', () => {
+    assert.match(errorFor('prod', valid({ ...variables.prod, accountId: '123456789012', stateBucket: 'b', loadBalancer: { deletionProtection: false } })), /prod requires loadBalancer\.deletionProtection/);
   });
 
   it('refuses an unprotected prod', () => {

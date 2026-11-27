@@ -22,17 +22,22 @@ export interface NetworkModuleProps {
   readonly singleNatGateway: boolean;
   /** Port the database security group accepts from the app security group. */
   readonly databasePort: number;
+  /** Ports the load balancer may reach on the api (app SG) and ui tasks. */
+  readonly apiPort: number;
+  readonly uiPort: number;
 }
 
 const PUBLIC_NETNUM = 0;
 const PRIVATE_NETNUM = 10;
 
-/** VPC with public and private subnets per AZ, routing, and baseline app/database security groups. */
+/** VPC with public and private subnets per AZ, routing, and the alb/app/ui/db security groups. */
 export class NetworkModule extends Construct {
   readonly vpcId: string;
   readonly publicSubnetIds: string[];
   readonly privateSubnetIds: string[];
   readonly appSecurityGroupId: string;
+  readonly uiSecurityGroupId: string;
+  readonly albSecurityGroupId: string;
   readonly databaseSecurityGroupId: string;
 
   constructor(scope: Construct, id: string, props: NetworkModuleProps) {
@@ -100,6 +105,7 @@ export class NetworkModule extends Construct {
       return subnet;
     });
 
+    // The description is force-new, so it stays as first written to keep this SG and its rules in place.
     const appSecurityGroup = new SecurityGroup(this, 'app-sg', {
       name: `${prefix}-app`,
       description: 'API compute. Ingress is added with the compute choice (#13).',
@@ -112,6 +118,59 @@ export class NetworkModule extends Construct {
       cidrIpv4: '0.0.0.0/0',
       description: 'All outbound'
     });
+
+    const uiSecurityGroup = new SecurityGroup(this, 'ui-sg', {
+      name: `${prefix}-ui`,
+      description: 'ui tasks. Only reachable from the load balancer.',
+      vpcId: vpc.id,
+      tags: tags('ui')
+    });
+    // Tasks pull their image from ECR and ship logs over HTTPS; without NAT they reach AWS through their public IP.
+    new VpcSecurityGroupEgressRule(this, 'ui-egress-https', {
+      securityGroupId: uiSecurityGroup.id,
+      ipProtocol: 'tcp',
+      fromPort: 443,
+      toPort: 443,
+      cidrIpv4: '0.0.0.0/0',
+      description: 'HTTPS to AWS APIs and ECR'
+    });
+
+    const albSecurityGroup = new SecurityGroup(this, 'alb-sg', {
+      name: `${prefix}-alb`,
+      description: 'Load balancer. HTTP from the internet, forwards only to the api and ui tasks.',
+      vpcId: vpc.id,
+      tags: tags('alb')
+    });
+    new VpcSecurityGroupIngressRule(this, 'alb-http', {
+      securityGroupId: albSecurityGroup.id,
+      ipProtocol: 'tcp',
+      fromPort: 80,
+      toPort: 80,
+      cidrIpv4: '0.0.0.0/0',
+      description: 'HTTP from the internet'
+    });
+    const albTargets = [
+      { id: 'api', group: appSecurityGroup, port: props.apiPort },
+      { id: 'ui', group: uiSecurityGroup, port: props.uiPort }
+    ];
+    for (const target of albTargets) {
+      new VpcSecurityGroupEgressRule(this, `alb-to-${target.id}`, {
+        securityGroupId: albSecurityGroup.id,
+        referencedSecurityGroupId: target.group.id,
+        ipProtocol: 'tcp',
+        fromPort: target.port,
+        toPort: target.port,
+        description: `Load balancer to ${target.id}`
+      });
+      new VpcSecurityGroupIngressRule(this, `${target.id}-from-alb`, {
+        securityGroupId: target.group.id,
+        referencedSecurityGroupId: albSecurityGroup.id,
+        ipProtocol: 'tcp',
+        fromPort: target.port,
+        toPort: target.port,
+        description: `${target.id} from load balancer`
+      });
+    }
 
     const dbSecurityGroup = new SecurityGroup(this, 'db-sg', {
       name: `${prefix}-db`,
@@ -132,6 +191,8 @@ export class NetworkModule extends Construct {
     this.publicSubnetIds = publicSubnets.map((subnet) => subnet.id);
     this.privateSubnetIds = privateSubnets.map((subnet) => subnet.id);
     this.appSecurityGroupId = appSecurityGroup.id;
+    this.uiSecurityGroupId = uiSecurityGroup.id;
+    this.albSecurityGroupId = albSecurityGroup.id;
     this.databaseSecurityGroupId = dbSecurityGroup.id;
   }
 }
