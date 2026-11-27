@@ -5,7 +5,7 @@
 ## Goals
 
 1. **Infrastructure as code** in TypeScript, using [cdktn](https://cdktn.io) (CDK Terrain) with **OpenTofu** as the engine.
-2. **Local first.** Every resource can be deployed to [floci](https://floci.io/aws/), a free MIT-licensed AWS emulator in Docker, and tested there before it reaches AWS.
+2. **Local first.** Test supported AWS resources locally with [floci](https://floci.io/aws/), a free MIT-licensed AWS emulator in Docker. Run Redis Streams in Docker Compose for local messaging.
 3. **One codebase, two targets.** The same constructs deploy to floci and to AWS. Only configuration differs, such as endpoints, credentials, the state backend and sizes. There are no `if (local)` forks in resource code unless floci can't emulate something.
 
 ## Tooling
@@ -57,6 +57,10 @@ The constructs are the same in every environment. Only configuration changes:
 
 Each construct takes a typed config object, so the differences stay in `src/config/*.ts`.
 
+## Messaging
+
+The [PetFinderTT design](petfindertt-design.md#workflow-sighting-to-search-zones) uses Redis Streams for messaging. Run Redis in Docker Compose locally and provision a private Redis broker with persistence and TLS for the on-demand AWS environment. Configure the outbox relay and worker with the environment’s Redis endpoint. Run messaging integration tests with a real Redis container.
+
 ## floci Setup
 
 floci is a service in `infrastructure/docker-compose.yml`, the single compose file for local services, next to Postgres. Start it from `infrastructure/` with `docker compose up -d floci`.
@@ -79,7 +83,7 @@ Everything except compute is independent of the API compute decision.
                     ┌──────────────┐
   browser ────────▶ │  CloudFront  │──▶ S3 (apps/ui build, private, OAC)
                     └──────┬───────┘
-                           │ /api/*
+                           │ /api/graphql
                            ▼
                     ┌──────────────┐        ┌─────────────────────┐
                     │ API compute  │──────▶ │ RDS Postgres 17     │
@@ -91,7 +95,7 @@ Everything except compute is independent of the API compute decision.
 
 - **Network:** a VPC across 2 AZs, with public and private subnets. A NAT gateway is needed only if compute runs in private subnets. There is one NAT in dev, and prod is decided later.
 - **Database:** RDS Postgres 17 in private subnets. Its security group allows traffic only from the compute security group. The credentials are generated and stored in Secrets Manager, never in code or state outputs.
-- **UI hosting:** a private S3 bucket behind CloudFront with Origin Access Control (OAC). CloudFront rewrites unknown paths to `index.html` so the Angular app's routing works, and sends `/api/*` to the api.
+- **UI hosting:** a private S3 bucket behind CloudFront with Origin Access Control (OAC). CloudFront rewrites unknown paths to `index.html` so the Angular app's routing works, and forwards `/api/graphql` to the API origin with POST enabled, caching disabled, and the authorization header forwarded.
 - **Observability:** CloudWatch log groups with a set retention period.
 - **Tagging:** default tags `project=petfinder`, `env=<env>` and `managed-by=cdktn`.
 
