@@ -9,7 +9,8 @@ A project for finding pets, built as an [Nx](https://nx.dev) monorepo with an **
 | Monorepo | Nx 24                                       |
 | Frontend | Angular 22 (client-side only, no SSR), SCSS |
 | Backend  | NestJS 12 (Express)                         |
-| Testing  | Vitest (unit), BDD with Gherkin: playwright-bdd (ui-e2e) and jest-cucumber (api-e2e) |
+| Database | PostgreSQL 17 (Docker)                      |
+| Testing  | Vitest (ui), Jest (api), Playwright (e2e)   |
 | Linting  | Oxlint                                      |
 
 ## Project Structure
@@ -33,6 +34,7 @@ petfinder/
 
 - [Node.js](https://nodejs.org) (LTS recommended; developed on Node 25 / npm 11)
 - npm
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) for the Postgres database
 
 You don't need a global Nx install. Every command below runs through `npx nx`.
 
@@ -42,7 +44,36 @@ You don't need a global Nx install. Every command below runs through `npx nx`.
 git clone https://github.com/nb341/petfinder.git
 cd petfinder
 npm install
+cp .env.example .env
+docker compose up -d      # start Postgres (see Database below)
 ```
+
+## Database (Postgres via Docker)
+
+Postgres 17 runs in Docker, as defined in `docker-compose.yml`. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+
+```bash
+cp .env.example .env      # first time only; .env is git-ignored
+docker compose up -d      # start Postgres in the background
+```
+
+| Setting  | Default                                                  |
+| -------- | -------------------------------------------------------- |
+| Host     | `localhost:5432`                                         |
+| User     | `petfinder`                                              |
+| Password | `petfinder`                                              |
+| Database | `petfinder`                                              |
+| URL      | `postgresql://petfinder:petfinder@localhost:5432/petfinder` |
+
+To change these, edit `.env`. Data persists in the `postgres-data` Docker volume.
+
+| Task               | Command                                                  |
+| ------------------ | -------------------------------------------------------- |
+| Start              | `docker compose up -d`                                   |
+| Stop               | `docker compose down`                                    |
+| Stop + wipe data   | `docker compose down -v`                                 |
+| Logs               | `docker compose logs -f postgres`                        |
+| psql shell         | `docker compose exec postgres psql -U petfinder -d petfinder` |
 
 ## Running the App
 
