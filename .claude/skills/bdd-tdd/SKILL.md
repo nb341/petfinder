@@ -13,6 +13,8 @@ All behavior in petfinder is built **outside-in**:
 
 Never write production code without a failing test that requires it.
 
+**Not for infrastructure.** `infrastructure/`, the `Dockerfile` and compose files get no tests. Follow the `infrastructure-changes` skill and verify with `cdktn synth` and `cdktn diff` instead.
+
 ## The Loop
 
 ```
