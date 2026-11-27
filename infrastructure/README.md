@@ -29,14 +29,13 @@ floci emulates AWS on `http://localhost:4566`. Run these commands from this fold
 
 The AWS infrastructure is written in TypeScript with [cdktn](https://cdktn.io) and `@cdktn/provider-aws` (hashicorp/aws `~> 6.0`), and run with OpenTofu.
 
-**Prerequisite:** `brew install opentofu`. You need it for `plan`, `deploy` and `destroy`, but not for `synth` or `test`.
+**Prerequisite:** `brew install opentofu`. You need it for `plan`, `deploy` and `destroy`, but not for `synth`.
 
 Pick an environment with `-c local|dev|uat|staging|prod`. The default is `local`, which targets floci.
 
 | Task | Command |
 | --- | --- |
 | Generate Terraform JSON into `cdktn/cdktn.out` | `npx nx synth infra -c local` |
-| Unit and feature tests (no Docker or OpenTofu needed) | `npx nx test infra` |
 | Preview changes | `npx nx plan infra -c local` |
 | Apply | `npx nx deploy infra -c local` |
 | Tear down | `npx nx destroy infra -c local` |
