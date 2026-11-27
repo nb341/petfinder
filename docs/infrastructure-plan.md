@@ -59,12 +59,13 @@ Each construct takes a typed config object, so the differences stay in `src/conf
 
 ## floci Setup
 
-floci is added to `docker-compose.yml`, the same file PR #1 introduced:
+floci is a service in `infrastructure/docker-compose.yml`, the single compose file for local services, next to Postgres. Start it from `infrastructure/` with `docker compose up -d floci`.
 
 - **Image and tag:** a pinned `x.y.z` tag of `floci/floci`, never `latest`, so local behavior is reproducible.
 - **Ports:** `127.0.0.1:4566:4566` for the AWS API, and `127.0.0.1:7001-7099:7001-7099` for RDS database connections. Both are bound to loopback only, because floci is unauthenticated.
 - **Docker socket:** `/var/run/docker.sock` is mounted, so floci can start real Postgres containers for RDS and real containers for ECS and Lambda.
-- **Storage:** `FLOCI_STORAGE_MODE=persistent` with a `./.floci` volume, so the emulated infrastructure survives restarts.
+- **Storage:** `FLOCI_STORAGE_MODE=persistent` with `infrastructure/.floci` mounted at `/app/data` (git-ignored), so the emulated infrastructure survives restarts.
+- **Smoke test:** `infrastructure/scripts/floci-smoke.sh` checks the #6 scenarios in `infrastructure/features/local-emulator.feature` using only `curl` and `docker`.
 
 **How the api reaches RDS locally:** floci proxies each RDS instance on a port from 7001 to 7099. The infra outputs `db_endpoint` and `db_port`, and `DATABASE_URL` is built from those outputs.
 
