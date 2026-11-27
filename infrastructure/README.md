@@ -68,19 +68,13 @@ Each env gets a VPC across `us-east-1a` and `us-east-1b`, with 2 public and 2 pr
 - **Security groups:** `app` (for API compute) and `db` (`5432` only from `app`).
 - **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id` and `db_security_group_id`.
 
-To check the network on floci after `npx nx deploy infra -c local`, read it back with signed `curl` requests. No AWS CLI is needed:
+### Verifying a change
+
+Infra code has no automated tests. Check a change with `cdktn synth` and `cdktn diff`:
 
 ```bash
-ec2() { curl -s --aws-sigv4 "aws:amz:us-east-1:ec2" --user test:test -d "Version=2016-11-15&$1" http://localhost:4566/; }
-VPC=$(cd cdktn/cdktn.out/stacks/petfinder-local && tofu output -raw vpc_id)
-ec2 "Action=DescribeSubnets&Filter.1.Name=vpc-id&Filter.1.Value.1=$VPC"       # 4 subnets, 2 AZs
-ec2 "Action=DescribeRouteTables&Filter.1.Name=vpc-id&Filter.1.Value.1=$VPC"   # igw route only on the public table
-ec2 "Action=DescribeSecurityGroups&Filter.1.Name=vpc-id&Filter.1.Value.1=$VPC"
+npx nx synth infra -c local   # Terraform JSON in cdktn/cdktn.out/stacks/<stack>/cdk.tf.json
+npx nx plan infra -c local    # cdktn diff: what would change (floci must be running for local)
 ```
 
-### Checking it by hand on floci
-
-1. Run `npx nx bootstrap infra -c local`, then `npx nx deploy infra -c local`.
-2. Check the state bucket exists with `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4566/petfinder-tfstate-000000000000`, which should print `200`.
-3. Check the bucket rules in `cdktn/cdktn.out/stacks/petfinder-bootstrap/cdk.tf.json`: versioning `Enabled`, `AES256`, all four public access blocks, and the TLS-only policy.
-4. Check the tags with `jq '.provider.aws[0].default_tags' cdktn/cdktn.out/stacks/petfinder-local/cdk.tf.json`.
+Use `-c dev`, `-c uat`, `-c staging` or `-c prod` for AWS. Those need `INFRA_AWS_ACCOUNT_ID` and an AWS login.

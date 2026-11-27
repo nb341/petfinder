@@ -123,11 +123,10 @@ Everything except compute is independent of the API compute decision.
 
 ## Testing the Infrastructure
 
-Infrastructure code has no automated tests. Each change is checked by hand, and the PR's "How to test" section lists the steps:
+Infrastructure code has no automated tests. Each change is checked with `cdktn synth` and `cdktn diff`, which the PR's "How to test" section lists:
 
-1. **Synth review:** run `nx synth infra -c <env>` and read the generated JSON in `infrastructure/cdktn/cdktn.out`. For example, check that RDS isn't public, that the bucket blocks public access, and that the tags are present.
-2. **Deploy to floci:** run `nx deploy infra -c local`, then check the real resources with `curl` or the AWS CLI against `localhost:4566`. For example, check that a bucket exists or that a rule is in place.
-3. **AWS plan check:** `nx plan infra -c dev` must succeed before anything is applied to AWS.
+1. **Synth:** run `nx synth infra -c <env>` and read the generated JSON in `infrastructure/cdktn/cdktn.out`. For example, check that RDS isn't public, that the bucket blocks public access, and that the tags are present.
+2. **Diff:** run `nx plan infra -c <env>` (`cdktn diff`) and check that it shows only the intended changes. For `dev`, it must succeed before anything is applied to AWS.
 
 ## Risks and Unknowns
 
