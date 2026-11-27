@@ -1,6 +1,6 @@
 # Infrastructure Plan
 
-> **Status:** planned, with tickets #6–#13. No infrastructure code has been written yet, and the API compute choice is still open (#13).
+> **Status:** planned, with tickets #6–#13. #6 (floci) and #7 (cdktn project) are done. The API compute choice is still open (#13).
 
 ## Goals
 
@@ -20,9 +20,10 @@
 ## Repo Layout
 
 ```
-infra/                         # Nx project "infra"
-├── cdktn.json
-├── main.ts                    # app entry: one stack per environment
+infrastructure/cdktn/          # Nx project "infra"
+├── cdktf.json                 # cdktn still reads this file name; targetVersions selects OpenTofu
+├── main.ts                    # app entry: builds the stack for INFRA_ENV
+├── scripts/require-tofu.sh    # fails early with install instructions
 ├── src/
 │   ├── config/                # per-environment settings (local, dev, prod)
 │   ├── provider.ts            # environment-aware AWS provider + backend
@@ -34,11 +35,9 @@ infra/                         # Nx project "infra"
 │       ├── database.ts        # RDS Postgres + Secrets Manager credentials
 │       ├── static-site.ts     # S3 + CloudFront for apps/ui
 │       └── api-service.ts     # API compute (pending decision)
-├── features/                  # Gherkin acceptance tests run against floci
-└── test/                      # synth unit tests
 ```
 
-Nx targets: `synth`, `test`, `plan`, `deploy` and `destroy`, each with `--configuration=local|dev|prod`.
+Nx targets: `synth`, `plan`, `deploy` and `destroy`, each with `--configuration=local|dev|uat|staging|prod` (default `local`).
 
 For example: `npx nx deploy infra -c local`.
 
@@ -46,12 +45,12 @@ For example: `npx nx deploy infra -c local`.
 
 The constructs are the same in every environment. Only configuration changes:
 
-| Concern | `local` (floci) | `dev` / `prod` (AWS) |
+| Concern | `local` (floci) | `dev` / `uat` / `staging` / `prod` (AWS) |
 | --- | --- | --- |
 | Provider endpoints | Every service used points to `http://localhost:4566`. Floci requires an entry for each service. | Default AWS endpoints |
 | Credentials | `test` / `test`, with `skip_credentials_validation`, `skip_metadata_api_check`, `skip_requesting_account_id` and `s3_use_path_style` | AWS profile or SSO, later an OIDC role in CI |
 | Region / account | `us-east-1` / `000000000000` | Real region and account |
-| State backend | Local file at `infra/.state/local.tfstate`, git-ignored | S3 bucket with `use_lockfile`, created by the bootstrap stack |
+| State backend | Local file at `infrastructure/cdktn/.state/local.tfstate`, git-ignored | S3 bucket with `use_lockfile`, created by the bootstrap stack |
 | Sizes | Smallest available | Set per environment, for example `db.t4g.micro` in dev |
 | Deletion protection | Off | On in prod |
 
@@ -111,10 +110,10 @@ Everything except compute is independent of the API compute decision.
 
 ## Testing the Infrastructure
 
-Testing follows the `bdd-tdd` skill:
+Infrastructure code has no automated tests. Each change is checked by hand, and the PR's "How to test" section lists the steps:
 
-1. **Synth unit tests** (`nx test infra`) check the generated Terraform JSON using the cdktn testing helpers. Examples: RDS isn't public, the bucket blocks public access, and tags are present. They're fast and need no Docker.
-2. **Acceptance tests** (`nx e2e infra`) are Gherkin features that deploy to floci and then check the real resources through the AWS SDK or by connecting to them. Examples: Postgres accepts connections, and the S3 bucket rejects anonymous reads.
+1. **Synth review:** run `nx synth infra -c <env>` and read the generated JSON in `infrastructure/cdktn/cdktn.out`. For example, check that RDS isn't public, that the bucket blocks public access, and that the tags are present.
+2. **Deploy to floci:** run `nx deploy infra -c local`, then check the real resources with `curl` or the AWS CLI against `localhost:4566`. For example, check that a bucket exists or that a rule is in place.
 3. **AWS plan check:** `nx plan infra -c dev` must succeed before anything is applied to AWS.
 
 ## Risks and Unknowns
@@ -123,7 +122,7 @@ Testing follows the `bdd-tdd` skill:
 | --- | --- |
 | cdktn is a young community fork of an archived project | Pin versions. The generated output is plain Terraform JSON, so OpenTofu/HCL is always a fallback. |
 | floci's fidelity for CloudFront, ALB routing, NAT and IAM enforcement isn't documented in detail | The first spike checks each service used. Keep a "floci gaps" list in this doc. Guard any gap with a config flag, never with a separate code path. |
-| floci reports success but doesn't enforce IAM policies or security groups the way AWS does | Synth unit tests check policy and security group correctness, and floci covers behavior. A dev AWS deploy is the final check. |
+| floci reports success but doesn't enforce IAM policies or security groups the way AWS does | Review policies and security groups in the synthesized JSON, and use floci for behavior. A dev AWS deploy is the final check. |
 | floci's RDS endpoint uses a proxy port (7001+), not 5432 | Read the port from the stack outputs and never hardcode it. |
 | floci's API is unauthenticated | Bind it to 127.0.0.1 only, and never run it on a shared network. |
 | AWS costs | Use the smallest dev sizes, an `nx destroy infra -c dev` command, and AWS Budgets alerts (later ticket). |
@@ -176,7 +175,7 @@ Feature: Infrastructure project
 
   Scenario: Synthesize the infrastructure
     When I run "npx nx synth infra -c local"
-    Then Terraform JSON is generated under "infra/cdktn.out"
+    Then Terraform JSON is generated under "infrastructure/cdktn/cdktn.out"
     And it targets the "hashicorp/aws" provider version "~> 6.0"
 
   Scenario: Infra unit tests run without Docker
@@ -327,7 +326,7 @@ Feature: UI hosting
 ### [#12](https://github.com/nb341/petfinder/issues/12) [DevOps] Infrastructure acceptance tests against floci
 Labels: `devops`
 
-**Summary:** Set up `nx e2e infra`. It deploys to a clean floci, runs the Gherkin features in `infra/features` against the real resources, and then tears everything down.
+**Summary:** Set up `nx e2e infra`. It deploys to a clean floci, runs the Gherkin features in `infrastructure/cdktn/features` against the real resources, and then tears everything down.
 
 ```gherkin
 @infra

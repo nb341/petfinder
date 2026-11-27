@@ -1,0 +1,10 @@
+{
+  "language": "typescript",
+  "app": "npx ts-node -P tsconfig.app.json main.ts",
+  "output": "cdktn.out",
+  "projectId": "petfinder-infra",
+  "sendCrashReports": "false",
+  "targetVersions": { "opentofu": ">=1.13.0" },
+  "terraformProviders": [],
+  "terraformModules": []
+}
