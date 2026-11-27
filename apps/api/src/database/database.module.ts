@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { connectionSettings } from './connection';
 import { dataSourceOptions } from './data-source';
 
 @Module({
@@ -8,7 +9,7 @@ import { dataSourceOptions } from './data-source';
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        ...dataSourceOptions(config.getOrThrow<string>('DATABASE_URL')),
+        ...dataSourceOptions(connectionSettings((key) => config.get<string>(key))),
         migrationsRun: config.get('DB_RUN_MIGRATIONS') === 'true',
       }),
     }),
