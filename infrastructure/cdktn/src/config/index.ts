@@ -11,11 +11,20 @@ export interface NetworkConfig {
   readonly nat: 'none' | 'single';
 }
 
+export interface DatabaseConfig {
+  readonly instanceClass: string;
+  readonly allocatedStorage: number;
+  readonly backupRetentionDays: number;
+  /** Also keeps a final snapshot on destroy. */
+  readonly deletionProtection: boolean;
+}
+
 interface BaseConfig {
   readonly region: string;
   readonly accountId: string;
   readonly stateBucket: string;
   readonly network: NetworkConfig;
+  readonly database: DatabaseConfig;
 }
 
 export interface FlociConfig extends BaseConfig {
@@ -46,6 +55,14 @@ const NETWORKS: Record<EnvName, NetworkConfig> = {
   prod: { cidr: '10.40.0.0/16', azs: AZS, nat: 'none' }
 };
 
+const DATABASES: Record<EnvName, DatabaseConfig> = {
+  local: { instanceClass: 'db.t4g.micro', allocatedStorage: 20, backupRetentionDays: 0, deletionProtection: false },
+  dev: { instanceClass: 'db.t4g.micro', allocatedStorage: 20, backupRetentionDays: 1, deletionProtection: false },
+  uat: { instanceClass: 'db.t4g.micro', allocatedStorage: 20, backupRetentionDays: 1, deletionProtection: false },
+  staging: { instanceClass: 'db.t4g.small', allocatedStorage: 20, backupRetentionDays: 7, deletionProtection: false },
+  prod: { instanceClass: 'db.t4g.small', allocatedStorage: 20, backupRetentionDays: 7, deletionProtection: true }
+};
+
 const stateBucketFor = (accountId: string) => `petfinder-tfstate-${accountId}`;
 
 export function envConfig(name: string | undefined, vars: NodeJS.ProcessEnv = process.env): EnvConfig {
@@ -57,6 +74,7 @@ export function envConfig(name: string | undefined, vars: NodeJS.ProcessEnv = pr
       accountId: FLOCI_ACCOUNT_ID,
       stateBucket: stateBucketFor(FLOCI_ACCOUNT_ID),
       network: NETWORKS.local,
+      database: DATABASES.local,
       endpoint: 'http://localhost:4566'
     };
   }
@@ -74,6 +92,7 @@ export function envConfig(name: string | undefined, vars: NodeJS.ProcessEnv = pr
     accountId,
     stateBucket: vars['INFRA_STATE_BUCKET'] || stateBucketFor(accountId),
     network: NETWORKS[name as AwsEnvName],
+    database: DATABASES[name as AwsEnvName],
     profile: `petfinder-${name}`
   };
 }
