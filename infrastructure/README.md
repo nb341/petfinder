@@ -60,9 +60,21 @@ Every resource gets the default tags `project=petfinder`, `env=<env>` and `manag
 3. Create the state bucket once per account with `npx nx bootstrap infra -c dev`. Its own state is kept in `cdktn/.state/bootstrap-aws.tfstate`, so back that file up.
 4. Run `npx nx plan infra -c dev`.
 
-### Checking it by hand on floci
+### Network
 
-1. Run `npx nx bootstrap infra -c local`, then `npx nx deploy infra -c local`.
-2. Check the state bucket exists with `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4566/petfinder-tfstate-000000000000`, which should print `200`.
-3. Check the bucket rules in `cdktn/cdktn.out/stacks/petfinder-bootstrap/cdk.tf.json`: versioning `Enabled`, `AES256`, all four public access blocks, and the TLS-only policy.
-4. Check the tags with `jq '.provider.aws[0].default_tags' cdktn/cdktn.out/stacks/petfinder-local/cdk.tf.json`.
+Each env gets a VPC across `us-east-1a` and `us-east-1b`, with 2 public and 2 private `/24` subnets. Only the public route table has a route to the internet gateway.
+- **CIDRs:** `local` 10.0.0.0/16, `dev` 10.10, `uat` 10.20, `staging` 10.30, `prod` 10.40.
+- **NAT:** set `nat: 'single'` for an env in `cdktn/src/config/index.ts` to give its private subnets outbound internet, at about $33 a month on AWS. Every env is `none` for now.
+- **Security groups:** `app` (for API compute) and `db` (`5432` only from `app`).
+- **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id` and `db_security_group_id`.
+
+### Verifying a change
+
+Infra code has no automated tests. Check a change with `cdktn synth` and `cdktn diff`:
+
+```bash
+npx nx synth infra -c local   # Terraform JSON in cdktn/cdktn.out/stacks/<stack>/cdk.tf.json
+npx nx plan infra -c local    # cdktn diff: what would change (floci must be running for local)
+```
+
+Use `-c dev`, `-c uat`, `-c staging` or `-c prod` for AWS. Those need `INFRA_AWS_ACCOUNT_ID` and an AWS login.
