@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "moduleResolution": "node10",
+    "ignoreDeprecations": "6.0",
+    // tsconfig-paths resolves inherited paths against this file's folder without it.
+    "baseUrl": "../.."
+  },
+  "ts-node": {
+    "transpileOnly": true
+  }
+}
