@@ -5,7 +5,7 @@
   "description": "Petfinder AWS infrastructure (cdktn + OpenTofu)",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test --require ts-node/register tests/*.test.ts",
+    "test": "INFRA_IMAGE_TAG=${INFRA_IMAGE_TAG:-test} node --test --require ts-node/register tests/*.test.ts",
     "synth": "cdktn synth",
     "synth:dev": "INFRA_ENV=dev cdktn synth",
     "diff:dev": "./scripts/require-tofu.sh && INFRA_ENV=dev cdktn diff dev-application",

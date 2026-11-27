@@ -9,7 +9,8 @@ export const localConfig: EnvironmentConfig = {
   stateBucket: `petfinder-tfstate-${FLOCI_ACCOUNT_ID}`,
   target: { kind: 'floci', endpoint: 'http://localhost:4566' },
   networking: { ...variables.dev.networking, cidr: '10.0.0.0/16' },
-  rds: { ...variables.dev.rds, backupRetentionDays: 0 }
+  rds: { ...variables.dev.rds, backupRetentionDays: 0 },
+  ecs: { ...variables.dev.ecs, imageTag: variables.dev.ecs.imageTag || 'local' }
 };
 
 /** floci's registry is throwaway, so destroy may delete repositories that still hold images. */

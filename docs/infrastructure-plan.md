@@ -1,6 +1,6 @@
 # Infrastructure Plan
 
-> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project), #8 (environment-aware provider and state), #9 (network) and #10 (RDS) are done. `infrastructure/` was then reorganized into modules, stacks and environments. API compute is decided (#13): ECS Fargate behind an ALB, with the ui served by nginx on ECS instead of S3 + CloudFront (#11). Done so far: container images (#28), the shared ECR registry (#29) and the load balancer with its security groups. ECS services are next.
+> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project), #8 (environment-aware provider and state), #9 (network) and #10 (RDS) are done. `infrastructure/` was then reorganized into modules, stacks and environments. API compute is decided (#13): ECS Fargate behind an ALB, with the ui served by nginx on ECS instead of S3 + CloudFront (#11). Done so far: container images (#28), the shared ECR registry (#29) the load balancer with its security groups, and the ECS services for the api and ui.
 
 ## Goals
 
@@ -131,6 +131,13 @@ floci is a service in `infrastructure/local/docker-compose.yml`, next to Postgre
   - `app` (api): ingress only from `alb`, plus the existing all-egress rule.
   - `ui`: ingress only from `alb`, and egress only HTTPS for image pulls and logs.
   - `db`: unchanged, `5432` from `app` only.
+- **ECS services:**
+  - One cluster per env, with Fargate ARM64 services for the api and ui. Each is 0.25 vCPU / 512 MiB with 1 task, or 2 tasks in prod.
+  - Tasks run in the public subnets with a public IP, so no NAT is needed. They register with the ALB target groups.
+  - Deployments use the circuit breaker with rollback.
+  - The image tag comes from `INFRA_IMAGE_TAG`.
+  - The api connects to RDS over TLS with separate `DB_*` settings, and its username and password come from the RDS-managed secret. Only the api's execution role can read that secret.
+  - Logs go to `/ecs/<service>`, kept 14 days, or 90 in prod.
 - **UI hosting:** nginx on ECS behind the ALB (see #13 below). This replaces the S3 + CloudFront plan in #11. CloudFront can be added in front of the ALB later for caching and HTTPS.
 - **Observability:** CloudWatch log groups with a set retention period.
 - **Tagging:** default tags `project=petfinder`, `env=<env>` and `managed-by=cdktn`.

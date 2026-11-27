@@ -16,6 +16,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build-api /workspace/dist/apps/api ./
 RUN npm ci --omit=dev --no-audit --no-fund && rm -rf /root/.npm
+# RDS certificates chain to Amazon's roots, which Node doesn't trust by default (used via DB_SSL_CA).
+ADD --chmod=644 https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /etc/ssl/certs/rds-global-bundle.pem
 USER node
 EXPOSE 3000
 CMD ["node", "main.js"]

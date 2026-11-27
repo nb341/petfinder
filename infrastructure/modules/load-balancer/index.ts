@@ -1,4 +1,5 @@
 import { Construct } from 'constructs';
+import { ITerraformDependable } from 'cdktn';
 import { Lb } from '@cdktn/provider-aws/lib/lb';
 import { LbListener } from '@cdktn/provider-aws/lib/lb-listener';
 import { LbListenerRule } from '@cdktn/provider-aws/lib/lb-listener-rule';
@@ -25,6 +26,8 @@ export class LoadBalancerModule extends Construct {
   readonly dnsName: string;
   readonly apiTargetGroupArn: string;
   readonly uiTargetGroupArn: string;
+  /** Listener and rules; ECS services depend on them because a target group must be attached first. */
+  readonly routing: ITerraformDependable[];
 
   constructor(scope: Construct, id: string, props: LoadBalancerModuleProps) {
     super(scope, id);
@@ -70,7 +73,7 @@ export class LoadBalancerModule extends Construct {
       defaultAction: [{ type: 'forward', targetGroupArn: ui.arn }]
     });
 
-    new LbListenerRule(this, 'api-route', {
+    const apiRoute = new LbListenerRule(this, 'api-route', {
       listenerArn: http.arn,
       priority: 10,
       condition: [{ pathPattern: { values: ['/api', '/api/*'] } }],
@@ -80,5 +83,6 @@ export class LoadBalancerModule extends Construct {
     this.dnsName = alb.dnsName;
     this.apiTargetGroupArn = api.arn;
     this.uiTargetGroupArn = ui.arn;
+    this.routing = [http, apiRoute];
   }
 }

@@ -33,17 +33,29 @@ export interface RdsConfig {
   deletionProtection: boolean;
 }
 
-/** A container the load balancer routes to. */
+/** A container the load balancer routes to, run as a Fargate service. */
 export interface ServiceConfig {
   /** Container port; 1024+ because the images run as non-root. */
   port: number;
   /** Path the load balancer polls; it must answer 200. */
   healthCheckPath: string;
+  /** Fargate CPU units (256 = 0.25 vCPU) and memory in MiB; only certain pairs are valid. */
+  cpu: number;
+  memory: number;
+  desiredCount: number;
 }
 
 export interface ServicesConfig {
   api: ServiceConfig;
   ui: ServiceConfig;
+}
+
+export interface EcsConfig {
+  /** Tag of both app images in the shared registry, from INFRA_IMAGE_TAG. Never `latest`. */
+  imageTag: string;
+  logRetentionDays: number;
+  /** Lets the api apply pending migrations on start. */
+  runMigrations: boolean;
 }
 
 export interface LoadBalancerConfig {
@@ -61,6 +73,7 @@ export interface EnvironmentConfig {
   rds: RdsConfig;
   services: ServicesConfig;
   loadBalancer: LoadBalancerConfig;
+  ecs: EcsConfig;
 }
 
 const accountId = process.env['INFRA_AWS_ACCOUNT_ID'] ?? '';
@@ -89,11 +102,16 @@ const defaults = {
     deletionProtection: false
   },
   services: {
-    api: { port: 3000, healthCheckPath: '/api' },
-    ui: { port: 8080, healthCheckPath: '/healthz' }
+    api: { port: 3000, healthCheckPath: '/api', cpu: 256, memory: 512, desiredCount: 1 },
+    ui: { port: 8080, healthCheckPath: '/healthz', cpu: 256, memory: 512, desiredCount: 1 }
   },
   loadBalancer: {
     deletionProtection: false
+  },
+  ecs: {
+    imageTag: process.env['INFRA_IMAGE_TAG'] ?? '',
+    logRetentionDays: 14,
+    runMigrations: true
   }
 } satisfies Omit<EnvironmentConfig, 'target' | 'networking'> & { networking: Omit<NetworkingConfig, 'cidr'> };
 
@@ -107,7 +125,8 @@ export const variables: Record<Environment, EnvironmentConfig> = {
     networking: { ...defaults.networking, cidr: '10.10.0.0/16' },
     rds: { ...defaults.rds },
     services: { ...defaults.services },
-    loadBalancer: { ...defaults.loadBalancer }
+    loadBalancer: { ...defaults.loadBalancer },
+    ecs: { ...defaults.ecs }
   },
   uat: {
     ...defaults,
@@ -115,7 +134,8 @@ export const variables: Record<Environment, EnvironmentConfig> = {
     networking: { ...defaults.networking, cidr: '10.20.0.0/16' },
     rds: { ...defaults.rds },
     services: { ...defaults.services },
-    loadBalancer: { ...defaults.loadBalancer }
+    loadBalancer: { ...defaults.loadBalancer },
+    ecs: { ...defaults.ecs }
   },
   staging: {
     ...defaults,
@@ -123,15 +143,20 @@ export const variables: Record<Environment, EnvironmentConfig> = {
     networking: { ...defaults.networking, cidr: '10.30.0.0/16' },
     rds: { ...defaults.rds, instanceClass: 'db.t4g.small', backupRetentionDays: 7 },
     services: { ...defaults.services },
-    loadBalancer: { ...defaults.loadBalancer }
+    loadBalancer: { ...defaults.loadBalancer },
+    ecs: { ...defaults.ecs }
   },
   prod: {
     ...defaults,
     target: awsProfile('prod'),
     networking: { ...defaults.networking, cidr: '10.40.0.0/16' },
     rds: { ...defaults.rds, instanceClass: 'db.t4g.small', backupRetentionDays: 7, deletionProtection: true },
-    services: { ...defaults.services },
-    loadBalancer: { ...defaults.loadBalancer, deletionProtection: true }
+    services: {
+      api: { ...defaults.services.api, desiredCount: 2 },
+      ui: { ...defaults.services.ui, desiredCount: 2 }
+    },
+    loadBalancer: { ...defaults.loadBalancer, deletionProtection: true },
+    ecs: { ...defaults.ecs, logRetentionDays: 90 }
   }
 };
 
@@ -173,6 +198,19 @@ export function cidrRange(cidr: string): [number, number] | undefined {
   return [address, address + size - 1];
 }
 
+// Fargate memory choices per CPU size, in MiB.
+const FARGATE_MEMORY: Record<number, number[]> = {
+  256: [512, 1024, 2048],
+  512: [1024, 2048, 3072, 4096],
+  1024: [2048, 3072, 4096, 5120, 6144, 7168, 8192],
+  2048: Array.from({ length: 13 }, (_, i) => 4096 + i * 1024),
+  4096: Array.from({ length: 23 }, (_, i) => 8192 + i * 1024)
+};
+
+const isFargateSize = (cpu: number, memory: number) => FARGATE_MEMORY[cpu]?.includes(memory) ?? false;
+
+const LOG_RETENTION_DAYS = [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653];
+
 /** Throws one error listing every problem, so a bad config fails before synthesis. */
 export function validateConfig(environment: string, config: EnvironmentConfig): void {
   const errors: string[] = [];
@@ -209,11 +247,29 @@ export function validateConfig(environment: string, config: EnvironmentConfig): 
     if (!service.healthCheckPath.startsWith('/')) errors.push(`services.${name}.healthCheckPath must start with "/"`);
   }
   if (services.api.port === services.ui.port) errors.push('services.api.port and services.ui.port must differ');
+  for (const name of ['api', 'ui'] as const) {
+    const { cpu, memory, desiredCount } = services[name];
+    if (!isFargateSize(cpu, memory)) errors.push(`services.${name}: ${cpu} CPU with ${memory} MiB is not a Fargate size`);
+    if (!Number.isInteger(desiredCount) || desiredCount < 0) errors.push(`services.${name}.desiredCount must be 0 or more`);
+  }
+
+  const { ecs } = config;
+  if (!ecs.imageTag) {
+    errors.push('ecs.imageTag is required: set INFRA_IMAGE_TAG to the tag pushed by npm run push:images');
+  } else if (ecs.imageTag === 'latest' || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/.test(ecs.imageTag)) {
+    errors.push(`ecs.imageTag "${ecs.imageTag}" must be a commit SHA or version, not "latest"`);
+  }
+  if (!LOG_RETENTION_DAYS.includes(ecs.logRetentionDays)) {
+    errors.push(`ecs.logRetentionDays must be one of ${LOG_RETENTION_DAYS.join(', ')}`);
+  }
 
   if (environment === 'prod') {
     if (!rds.deletionProtection) errors.push('prod requires rds.deletionProtection');
     if (rds.backupRetentionDays < 7) errors.push('prod requires rds.backupRetentionDays of at least 7');
     if (!config.loadBalancer.deletionProtection) errors.push('prod requires loadBalancer.deletionProtection');
+    for (const name of ['api', 'ui'] as const) {
+      if (services[name].desiredCount < 2) errors.push(`prod requires services.${name}.desiredCount of at least 2`);
+    }
   }
 
   if (errors.length) {
