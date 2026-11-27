@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { nxE2EPreset } from '@nx/playwright/preset';
 import { getReadyUrl, workspaceRoot } from '@nx/devkit';
+import { defineBddConfig } from 'playwright-bdd';
 
 const isCI = !!process.env['CI'];
 // For CI, you may want to set BASE_URL to the deployed application.
@@ -23,13 +24,32 @@ const baseURL = process.env['BASE_URL'] || getReadyUrl('http://localhost:4200');
  * `playwright.config.mts` via its extension list
  * (.ts/.js/.mts/.mjs/.cts/.cjs).
  */
+/**
+ * BDD: Gherkin features in src/features, step definitions in src/steps.
+ * `bddgen` turns them into Playwright tests in .features-gen (git-ignored).
+ */
+const testDir = defineBddConfig({
+  features: 'src/features/**/*.feature',
+  steps: 'src/steps/**/*.ts',
+});
+
 export default defineConfig({
-  ...nxE2EPreset(import.meta.dirname, { testDir: './src' }),
+  ...nxE2EPreset(import.meta.dirname, { testDir }),
+  reporter: [
+    ['list'],
+    // One video per scenario, grouped by feature: dist/feature-videos/<feature>/<scenario>.webm
+    ['./feature-videos-reporter.ts', { outputDir: `${workspaceRoot}/dist/feature-videos` }],
+    // Report (with videos per scenario): npx playwright show-report dist/.playwright/apps/ui-e2e/playwright-report
+    ['html', { outputFolder: '../../dist/.playwright/apps/ui-e2e/playwright-report', open: 'never' }],
+  ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+    /* Record a video of every scenario so each feature can be seen working. */
+    video: 'on',
+    screenshot: 'on',
   },
   webServer: {
     command: isCI ? 'npx nx run ui:serve-static' : 'npx nx run ui:serve',
@@ -43,15 +63,7 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
 
-    {
-      name: "firefox",
-      use: { ...devices["Desktop Firefox"] },
-    },
-
-    {
-      name: "webkit",
-      use: { ...devices["Desktop Safari"] },
-    },
+    // Add firefox/webkit here to run on more browsers (each records its own videos).
 
     // Uncomment for mobile browsers support
     /* {

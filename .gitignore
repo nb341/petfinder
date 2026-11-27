@@ -44,3 +44,6 @@ venv/
 __screenshots__/
 vitest.config.*.timestamp*
 .vitest
+
+# BDD generated tests (playwright-bdd)
+.features-gen/

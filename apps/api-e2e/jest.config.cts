@@ -5,6 +5,8 @@ module.exports = {
   globalTeardown: '<rootDir>/src/support/global-teardown.ts',
   setupFiles: ['<rootDir>/src/support/test-setup.ts'],
   testEnvironment: 'node',
+  // BDD: Gherkin in src/features, jest-cucumber step definitions in src/steps
+  testMatch: ['<rootDir>/src/**/*.steps.ts', '<rootDir>/src/**/*.spec.ts'],
   transform: {
     '^.+\\.[tj]s$': ['ts-jest', {
       tsconfig: '<rootDir>/tsconfig.spec.json',

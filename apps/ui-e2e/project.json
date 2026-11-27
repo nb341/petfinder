@@ -7,5 +7,32 @@
     "ui"
   ],
   "// targets": "to see all targets run: nx show project ui-e2e --web",
-  "targets": {}
+  "targets": {
+    "bddgen": {
+      "command": "bddgen",
+      "options": {
+        "cwd": "apps/ui-e2e"
+      },
+      "inputs": [
+        "{projectRoot}/src/**/*",
+        "{projectRoot}/playwright.config.mts"
+      ],
+      "outputs": [
+        "{projectRoot}/.features-gen"
+      ],
+      "cache": true
+    },
+    "e2e": {
+      "dependsOn": [
+        "bddgen",
+        {
+          "projects": [
+            "ui"
+          ],
+          "target": "serve",
+          "waitFor": "ready"
+        }
+      ]
+    }
+  }
 }
