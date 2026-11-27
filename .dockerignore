@@ -1,0 +1,17 @@
+**/node_modules
+dist
+coverage
+.nx
+.angular
+.git
+.github
+.claude
+.vscode
+.env
+.env.*
+infrastructure
+docs
+**/.features-gen
+**/test-results
+**/playwright-report
+**/__screenshots__

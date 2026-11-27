@@ -33,5 +33,36 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./.floci:/app/data
 
+  # The app images are opt-in: docker compose --profile apps up -d --build
+  api:
+    profiles: [apps]
+    build:
+      context: ../..
+      target: api
+    image: petfinder-api:local
+    container_name: petfinder-api
+    env_file: ../../.env
+    environment:
+      # Overrides the root .env's localhost URL; inside compose, Postgres is reached by service name.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-petfinder}:${POSTGRES_PASSWORD:-petfinder}@postgres:5432/${POSTGRES_DB:-petfinder}
+      DB_RUN_MIGRATIONS: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ui:
+    profiles: [apps]
+    build:
+      context: ../..
+      target: ui
+    image: petfinder-ui:local
+    container_name: petfinder-ui
+    ports:
+      - '127.0.0.1:8080:8080'
+    volumes:
+      - ./nginx:/etc/nginx/conf.d/locations:ro
+    depends_on:
+      - api
+
 volumes:
   postgres-data:
