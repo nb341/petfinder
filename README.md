@@ -1,0 +1,133 @@
+# Petfinder
+
+A project for finding pets, built as an [Nx](https://nx.dev) monorepo with an **Angular** frontend and a **NestJS** backend.
+
+## Tech Stack
+
+| Layer    | Technology                                  |
+| -------- | ------------------------------------------- |
+| Monorepo | Nx 24                                       |
+| Frontend | Angular 22 (client-side only, no SSR), SCSS |
+| Backend  | NestJS 12 (Express)                         |
+| Testing  | Vitest (ui), Jest (api), Playwright (e2e)   |
+| Linting  | Oxlint                                      |
+
+## Project Structure
+
+```
+petfinder/
+├── apps/
+│   ├── ui/            # Angular frontend          → http://localhost:4200
+│   ├── ui-e2e/        # Playwright e2e tests for ui
+│   ├── api/           # NestJS backend            → http://localhost:3000/api
+│   └── api-e2e/       # e2e tests for api
+├── libs/
+│   └── shared/
+│       └── models/    # Shared types/DTOs, imported as `models`
+├── nx.json            # Nx workspace config
+├── tsconfig.base.json # Shared TS config + path aliases
+└── package.json
+```
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org) (LTS recommended; developed on Node 25 / npm 11)
+- npm
+
+You don't need a global Nx install. Every command below runs through `npx nx`.
+
+## Getting Started
+
+```bash
+git clone https://github.com/nb341/petfinder.git
+cd petfinder
+npm install
+```
+
+## Running the App
+
+```bash
+npx nx serve ui
+```
+
+This starts **both** apps, because `ui` declares a dependency on `api:serve`:
+
+- UI: http://localhost:4200
+- API: http://localhost:3000/api
+
+In development the UI forwards any request to `/api/*` to the backend via `apps/ui/proxy.conf.json`. In Angular code, call relative URLs such as `/api/pets`. You don't need a hostname or any CORS setup.
+
+To run only the backend:
+
+```bash
+npx nx serve api
+```
+
+## Common Commands
+
+| Task                    | Command                          |
+| ----------------------- | -------------------------------- |
+| Serve ui + api          | `npx nx serve ui`                |
+| Serve api only          | `npx nx serve api`               |
+| Build a project         | `npx nx build ui` / `npx nx build api` |
+| Build everything        | `npx nx run-many -t build`       |
+| Unit tests (all)        | `npx nx run-many -t test`        |
+| e2e tests               | `npx nx e2e ui-e2e` / `npx nx e2e api-e2e` |
+| Lint (all)              | `npx nx run-many -t lint`        |
+| Only affected projects  | `npx nx affected -t test lint build` |
+| Project graph           | `npx nx graph`                   |
+| Clear Nx cache          | `npx nx reset`                   |
+
+Build output goes to `dist/apps/<project>`. The UI build is a static site in `dist/apps/ui/browser`. To preview it locally, run `npx nx serve-static ui`.
+
+## Shared Code
+
+Put types and interfaces used by both apps in `libs/shared/models/src` and export them from its `index.ts`. Import them anywhere with:
+
+```ts
+import { Pet } from 'models';
+```
+
+## Generating Code
+
+```bash
+# Angular component in the ui app
+npx nx g @nx/angular:component apps/ui/src/app/pet-list/pet-list
+
+# NestJS resource (module + controller + service) in the api app
+npx nx g @nx/nest:resource apps/api/src/app/pets/pets
+
+# New shared library
+npx nx g @nx/js:library libs/shared/<name>
+```
+
+## Setup History
+
+How this workspace was created, for reference:
+
+1. Initialized the git repo with `origin` set to `https://github.com/nb341/petfinder.git`, and added `.gitignore` and `README.md`.
+2. Added Nx to the existing repo:
+   ```bash
+   npm init -y
+   npx nx@latest init
+   npx nx add @nx/angular
+   npx nx add @nx/nest
+   ```
+3. Generated the apps and shared library:
+   ```bash
+   npx nx g @nx/angular:application apps/ui --style=scss --routing=true --bundler=esbuild --e2eTestRunner=playwright
+   npx nx g @nx/nest:application apps/api --frontendProject=ui
+   npx nx g @nx/js:library libs/shared/models --unitTestRunner=jest --bundler=none
+   ```
+4. **Removed SSR** from `ui`, because the generator enabled it and the app is client-side only:
+   - Deleted `main.server.ts`, `server.ts`, `app.config.server.ts` and `app.routes.server.ts`
+   - Removed the `server`, `ssr`, `outputMode` and `security` build options from `apps/ui/project.json`
+   - Removed `provideClientHydration()` from `app.config.ts`
+   - Uninstalled `@angular/ssr` and `@angular/platform-server`
+
+## Contributing
+
+1. Create a branch: `git checkout -b feature/my-feature`
+2. Commit your changes
+3. Run `npx nx affected -t lint test build` before pushing
+4. Push the branch and open a pull request
