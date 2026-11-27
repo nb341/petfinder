@@ -57,6 +57,7 @@ All local services are defined in one file, `infrastructure/local/docker-compose
 | ---------- | -------------------------------------------- | ----------------------- |
 | `postgres` | Postgres 17 for day-to-day api development   | `localhost:5432`        |
 | `floci`    | Local AWS emulator for infrastructure work   | `http://localhost:4566` |
+| `api`, `ui` | The production images (opt-in `apps` profile) | `http://localhost:8080` |
 
 | Task                  | Command                                                  |
 | --------------------- | -------------------------------------------------------- |
@@ -66,6 +67,23 @@ All local services are defined in one file, `infrastructure/local/docker-compose
 | Stop + wipe Postgres  | `docker compose down -v`                                 |
 | Logs                  | `docker compose logs -f postgres`                        |
 | psql shell            | `docker compose exec postgres psql -U petfinder -d petfinder` |
+| Run the app images    | `docker compose --profile apps up -d --build`            |
+
+### Container images
+
+The root `Dockerfile` builds both apps. Its `base` stage installs the shared `node_modules` once, and each target builds on it:
+
+| Target | Image | Contents |
+| ------ | ----- | -------- |
+| `api`  | `node:22-alpine`, user `node`, port 3000 | the bundled api with production dependencies only |
+| `ui`   | `nginx-unprivileged`, port 8080 | the Angular build, SPA fallback, `/healthz` |
+
+```bash
+docker build --target api -t petfinder-api .
+docker build --target ui -t petfinder-ui .
+```
+
+With the `apps` profile, compose serves the ui on `http://localhost:8080` and proxies `/api` to the api container. In AWS the load balancer routes `/api` instead, so the image itself has no proxy. The api's runtime dependencies come from `apps/api/package.json`, so add a package there when the api starts importing it.
 
 ### Database (Postgres)
 
