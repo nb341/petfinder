@@ -22,7 +22,7 @@ petfinder/
 │   ├── ui-e2e/        # BDD acceptance tests for ui (Gherkin + Playwright, with videos)
 │   ├── api/           # NestJS backend            → http://localhost:3000/api
 │   └── api-e2e/       # BDD acceptance tests for api (Gherkin + jest-cucumber)
-├── infrastructure/    # Local services (Postgres + floci) and the cdktn `infra` project, see infrastructure/README.md
+├── infrastructure/    # AWS infrastructure (standalone cdktn package) + local/ services, see infrastructure/README.md
 ├── libs/
 │   └── shared/
 │       └── models/    # Shared types/DTOs, imported as `models`
@@ -46,12 +46,12 @@ git clone https://github.com/nb341/petfinder.git
 cd petfinder
 npm install
 cp .env.example .env
-cd infrastructure && docker compose up -d && cd ..   # start Postgres and floci (see below)
+cd infrastructure/local && docker compose up -d && cd ../..   # start Postgres and floci (see below)
 ```
 
 ## Local Services (Docker)
 
-All local services are defined in one file, `infrastructure/docker-compose.yml`. Run the `docker compose` commands below from `infrastructure/`. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+All local services are defined in one file, `infrastructure/local/docker-compose.yml`. Run the `docker compose` commands below from `infrastructure/local/`. You need [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
 
 | Service    | What it is                                   | Address                 |
 | ---------- | -------------------------------------------- | ----------------------- |
@@ -81,7 +81,7 @@ To change the credentials, edit the root `.env`. Compose passes it to the contai
 
 ### Local AWS (floci)
 
-floci emulates AWS for infrastructure work. See [infrastructure/README.md](infrastructure/README.md).
+floci emulates AWS locally. See [infrastructure/local/README.md](infrastructure/local/README.md). For the AWS infrastructure itself, see [infrastructure/README.md](infrastructure/README.md).
 
 ## Running the App
 
