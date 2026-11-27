@@ -2,14 +2,10 @@ import type { Reporter, TestCase, TestResult } from '@playwright/test/reporter';
 import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-/**
- * Copies each scenario's video into a readable folder layout:
- *   dist/feature-videos/<feature>/<scenario> [<browser>].webm
- * so every Gherkin feature has videos showing it working.
- */
 const slug = (s: string) =>
   s.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase();
 
+// Copies videos to <outputDir>/<feature>/<scenario> [<browser>].webm
 export default class FeatureVideosReporter implements Reporter {
   private readonly outDir: string;
 
