@@ -1,12 +1,12 @@
 # Infrastructure Plan
 
-> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project) and #8 (environment-aware provider and state) are done. The API compute choice is still open (#13).
+> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project), #8 (environment-aware provider and state), #9 (network) and #10 (RDS) are done. `infrastructure/` was then reorganized into modules, stacks and environments. The API compute choice is still open (#13).
 
 ## Goals
 
 1. **Infrastructure as code** in TypeScript, using [cdktn](https://cdktn.io) (CDK Terrain) with **OpenTofu** as the engine.
-2. **Local first.** Test supported AWS resources locally with [floci](https://floci.io/aws/), a free MIT-licensed AWS emulator in Docker. Run Redis Streams in Docker Compose for local messaging.
-3. **One codebase, two targets.** The same constructs deploy to floci and to AWS. Only configuration differs, such as endpoints, credentials, the state backend and sizes. There are no `if (local)` forks in resource code unless floci can't emulate something.
+2. **AWS is the target.** cdktn deploys to the `dev`, `uat`, `staging` and `prod` AWS environments. Changes are checked with `cdktn synth` and `cdktn diff`.
+3. **floci for local work only.** [floci](https://floci.io/aws/), a free MIT-licensed AWS emulator in Docker, is available for local development and for trying cdktn changes now and then (`local` env). It isn't how AWS deployments are verified. Everything floci-specific lives in `infrastructure/local/`, and modules have no `if (local)` forks. Redis Streams runs in Docker Compose for local messaging.
 
 ## Tooling
 
@@ -19,49 +19,48 @@
 
 ## Repo Layout
 
+`infrastructure/` is a standalone npm package (its own `package.json`), outside the Nx workspace. It's configuration-driven: config defines what is provisioned, stacks compose modules, modules implement resources, an abstract `BaseStack` sets the shared conventions, and `main.ts` orchestrates.
+
 ```
-infrastructure/cdktn/          # Nx project "infra"
-├── cdktf.json                 # cdktn still reads this file name; targetVersions selects OpenTofu
-├── main.ts                    # app entry: builds the stack for INFRA_ENV
-├── scripts/require-tofu.sh    # fails early with install instructions
-├── src/
-│   ├── config/                # per-environment settings (local, dev, prod)
-│   ├── provider.ts            # environment-aware AWS provider + backend
-│   ├── stacks/
-│   │   ├── bootstrap-stack.ts # S3 state bucket, one per account (also deployable to floci)
-│   │   └── petfinder-stack.ts # composes the constructs below
-│   └── constructs/
-│       ├── network.ts         # VPC, subnets, routing, security groups
-│       ├── database.ts        # RDS Postgres + Secrets Manager credentials
-│       ├── static-site.ts     # S3 + CloudFront for apps/ui
-│       └── api-service.ts     # API compute (pending decision)
+infrastructure/
+├── variables.ts               # typed config for dev/uat/staging/prod: defaults, overrides, flags, validation
+├── main.ts                    # one ApplicationStack per environment (or just INFRA_ENV)
+├── stacks/
+│   ├── base-stack.ts          # abstract BaseStack: config, provider, account guard, S3 state, tags, naming
+│   ├── application-stack.ts   # networking + rds (compute joins in #13)
+│   └── provider.ts            # AWS provider with standard tags
+├── modules/                   # networking, rds, s3; new modules are added when a ticket needs them
+├── bootstrap/                 # S3 state bucket, deployed on its own first
+├── local/                     # docker-compose (Postgres + floci), floci.ts, config.ts
+├── tests/variables.test.ts    # config defaults, overrides and validation
+└── cdktf.json  package.json  tsconfig.json
 ```
 
-Nx targets: `synth`, `plan`, `deploy` and `destroy`, each with `--configuration=local|dev|uat|staging|prod` (default `local`).
+Commands are npm scripts in `infrastructure/`: `npm test`, `npm run synth:<env>`, `diff:<env>`, `deploy:<env>` and `destroy:<env>` for `dev`, `uat`, `staging`, `prod` and `local`, plus `npm run bootstrap` once.
 
-For example: `npx nx deploy infra -c local`.
+Optional infrastructure (RDS Proxy, NAT, ECS autoscaling, scheduled Lambdas and so on) is switched on per environment with config flags such as `rdsProxy.enabled`, never by checking the environment name.
 
 ## Local vs AWS
 
-The constructs are the same in every environment. Only configuration changes:
+The modules are the same in every environment. Only configuration changes, from `variables.ts` or `local/config.ts`, plus `local/floci.ts` for the provider:
 
 | Concern | `local` (floci) | `dev` / `uat` / `staging` / `prod` (AWS) |
 | --- | --- | --- |
 | Provider endpoints | Every service used points to `http://localhost:4566`. Floci requires an entry for each service. | Default AWS endpoints |
 | Credentials | `test` / `test`, with `skip_credentials_validation`, `skip_metadata_api_check`, `skip_requesting_account_id` and `s3_use_path_style` | AWS profile `petfinder-<env>` (SSO), later an OIDC role in CI. `allowed_account_ids` guards against the wrong account. |
 | Region / account | `us-east-1` / `000000000000` | `us-east-1`, one shared account (`INFRA_AWS_ACCOUNT_ID` in the root `.env`) |
-| State backend | Local file at `infrastructure/cdktn/.state/local.tfstate`, git-ignored | One shared S3 bucket `petfinder-tfstate-<accountId>` (override with `INFRA_STATE_BUCKET`), key `petfinder/<env>.tfstate`, `encrypt` and `use_lockfile`. Created by `nx bootstrap infra`. |
+| State backend | Local files in `infrastructure/local/.state/`, git-ignored | One shared S3 bucket `petfinder-tfstate-<accountId>` (override with `INFRA_STATE_BUCKET`), key `<env>/<component>/terraform.tfstate`, `encrypt` and `use_lockfile`. Created by `npm run bootstrap`. |
 | Sizes | Smallest available | Set per environment, for example `db.t4g.micro` in dev |
 | Deletion protection | Off | On in prod |
 
-Each construct takes a typed config object, so the differences stay in `src/config/*.ts`. Every provider sets default tags `project=petfinder`, `env=<env>` and `managed-by=cdktn`.
+Modules take typed props and never read config themselves, so the differences stay in `variables.ts`. Every provider sets default tags `Project`, `Environment`, `Component`, `ManagedBy=cdktn` and `Owner=platform`.
 
-**Bootstrap state:** the bootstrap stack can't keep its state in the bucket it creates, so its state is a git-ignored local file, `.state/bootstrap-aws.tfstate`. Back it up. If it's lost, re-import the bucket with `tofu import`.
+**Bootstrap state:** the bootstrap stack can't keep its state in the bucket it creates, so its state is a git-ignored local file, `infrastructure/bootstrap/.state/terraform.tfstate`. Back it up. If it's lost, re-import the bucket with `tofu import`.
 
 **floci gaps:**
 - floci reports `db_endpoint` as its internal Docker IP (for example `172.25.0.3`). From the host, connect to `localhost:<db_port>` instead. `db_port` is the proxy port, `7001` and up.
 - floci only runs a real Postgres behind RDS if it can reach the Docker daemon through the mounted socket. Without it, the instance reaches `available` and the secret is created, but connections are dropped. On Docker Desktop, turn on Settings → Advanced → "Allow the default Docker socket to be used".
-- floci returns `referenced_security_group_id` as `000000000000/sg-…`, a form AWS uses only for cross-account references. So `nx plan infra -c local` always shows one harmless in-place update on `db-from-app`. AWS isn't affected, so there's no workaround in code.
+- floci returns `referenced_security_group_id` as `000000000000/sg-…`, a form AWS uses only for cross-account references. So `npm run diff:local` always shows one harmless in-place update on `db-from-app`. AWS isn't affected, so there's no workaround in code.
 
 **floci fidelity checked so far:** S3 native state locking (`use_lockfile`) works against floci. Checked on 2026-11-27: a second `tofu apply` failed with "Error acquiring the state lock" while the first was running.
 
@@ -71,17 +70,15 @@ The [PetFinderTT design](petfindertt-design.md#workflow-sighting-to-search-zones
 
 ## floci Setup
 
-floci is a service in `infrastructure/docker-compose.yml`, the single compose file for local services, next to Postgres. Start it from `infrastructure/` with `docker compose up -d floci`.
+floci is a service in `infrastructure/local/docker-compose.yml`, next to Postgres. Start it from `infrastructure/local/` with `docker compose up -d floci`. See `infrastructure/local/README.md`.
 
 - **Image and tag:** a pinned `x.y.z` tag of `floci/floci`, never `latest`, so local behavior is reproducible.
 - **Ports:** `127.0.0.1:4566:4566` for the AWS API, and `127.0.0.1:7001-7099:7001-7099` for RDS database connections. Both are bound to loopback only, because floci is unauthenticated.
-- **Docker socket:** `/var/run/docker.sock` is mounted, so floci can start real Postgres containers for RDS and real containers for ECS and Lambda.
-- **Storage:** `FLOCI_STORAGE_MODE=persistent` with `infrastructure/.floci` mounted at `/app/data` (git-ignored), so the emulated infrastructure survives restarts.
-- **Smoke test:** `infrastructure/scripts/floci-smoke.sh` checks the #6 scenarios in `infrastructure/features/local-emulator.feature` using only `curl` and `docker`.
+- **Docker socket:** `/var/run/docker.sock` is mounted, so floci can start real containers for RDS, ECS and Lambda.
+- **Storage:** `FLOCI_STORAGE_MODE=persistent` with `infrastructure/local/.floci` mounted at `/app/data` (git-ignored).
+- **Smoke test:** `infrastructure/local/scripts/floci-smoke.sh` checks `infrastructure/local/features/local-emulator.feature` using only `curl` and `docker`.
 
-**How the api reaches RDS locally:** floci proxies each RDS instance on a port from 7001 to 7099. The infra outputs `db_endpoint` and `db_port`, and `DATABASE_URL` is built from those outputs.
-
-**Relationship to the existing Postgres container:** the plain Postgres from PR #1 stays as the fast default for day-to-day api development. floci RDS is used to test the infrastructure, and the api can switch to it by changing `DATABASE_URL`.
+**Relationship to the Postgres container:** the plain Postgres stays the default for day-to-day api development. The api can point at floci RDS by changing `DATABASE_URL`, as described in `infrastructure/local/README.md`.
 
 ## Target Architecture
 
@@ -131,10 +128,10 @@ Everything except compute is independent of the API compute decision.
 
 ## Testing the Infrastructure
 
-Infrastructure code has no automated tests. Each change is checked with `cdktn synth` and `cdktn diff`, which the PR's "How to test" section lists:
+Only the configuration is tested automatically: `npm test` runs `tests/variables.test.ts`, which covers the defaults, per-env overrides and validation errors, including prod's protections. Resources are checked with `cdktn synth` and `cdktn diff`, which the PR's "How to test" section lists:
 
-1. **Synth:** run `nx synth infra -c <env>` and read the generated JSON in `infrastructure/cdktn/cdktn.out`. For example, check that RDS isn't public, that the bucket blocks public access, and that the tags are present.
-2. **Diff:** run `nx plan infra -c <env>` (`cdktn diff`) and check that it shows only the intended changes. For `dev`, it must succeed before anything is applied to AWS.
+1. **Synth:** run `npm run synth:<env>` in `infrastructure/` and read the generated JSON in `infrastructure/cdktn.out`. For example, check that RDS isn't public, that the bucket blocks public access, and that the tags are present.
+2. **Diff:** run `npm run diff:<env>` (`cdktn diff`) and check that it shows only the intended changes. For `dev`, it must succeed before anything is applied to AWS.
 
 ## Risks and Unknowns
 
@@ -145,7 +142,7 @@ Infrastructure code has no automated tests. Each change is checked with `cdktn s
 | floci reports success but doesn't enforce IAM policies or security groups the way AWS does | Review policies and security groups in the synthesized JSON, and use floci for behavior. A dev AWS deploy is the final check. |
 | floci's RDS endpoint uses a proxy port (7001+), not 5432 | Read the port from the stack outputs and never hardcode it. |
 | floci's API is unauthenticated | Bind it to 127.0.0.1 only, and never run it on a shared network. |
-| AWS costs | Use the smallest dev sizes, an `nx destroy infra -c dev` command, and AWS Budgets alerts (later ticket). |
+| AWS costs | Use the smallest dev sizes, an `npm run destroy:dev` command, and AWS Budgets alerts (later ticket). |
 
 ## Tickets
 

@@ -1,0 +1,42 @@
+{
+  "name": "petfinder-infrastructure",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Petfinder AWS infrastructure (cdktn + OpenTofu)",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --require ts-node/register tests/*.test.ts",
+    "synth": "cdktn synth",
+    "synth:dev": "INFRA_ENV=dev cdktn synth",
+    "diff:dev": "./scripts/require-tofu.sh && INFRA_ENV=dev cdktn diff dev-application",
+    "deploy:dev": "./scripts/require-tofu.sh && INFRA_ENV=dev cdktn deploy dev-application",
+    "destroy:dev": "./scripts/require-tofu.sh && INFRA_ENV=dev cdktn destroy dev-application",
+    "synth:uat": "INFRA_ENV=uat cdktn synth",
+    "diff:uat": "./scripts/require-tofu.sh && INFRA_ENV=uat cdktn diff uat-application",
+    "deploy:uat": "./scripts/require-tofu.sh && INFRA_ENV=uat cdktn deploy uat-application",
+    "destroy:uat": "./scripts/require-tofu.sh && INFRA_ENV=uat cdktn destroy uat-application",
+    "synth:staging": "INFRA_ENV=staging cdktn synth",
+    "diff:staging": "./scripts/require-tofu.sh && INFRA_ENV=staging cdktn diff staging-application",
+    "deploy:staging": "./scripts/require-tofu.sh && INFRA_ENV=staging cdktn deploy staging-application",
+    "destroy:staging": "./scripts/require-tofu.sh && INFRA_ENV=staging cdktn destroy staging-application",
+    "synth:prod": "INFRA_ENV=prod cdktn synth",
+    "diff:prod": "./scripts/require-tofu.sh && INFRA_ENV=prod cdktn diff prod-application",
+    "deploy:prod": "./scripts/require-tofu.sh && INFRA_ENV=prod cdktn deploy prod-application",
+    "destroy:prod": "./scripts/require-tofu.sh && INFRA_ENV=prod cdktn destroy prod-application",
+    "synth:local": "INFRA_ENV=local cdktn synth",
+    "diff:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn diff local-application",
+    "deploy:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn deploy local-application --auto-approve",
+    "destroy:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn destroy local-application --auto-approve",
+    "bootstrap": "./scripts/require-tofu.sh && INFRA_ENV=dev cdktn deploy bootstrap",
+    "bootstrap:local": "./scripts/require-tofu.sh && INFRA_ENV=local cdktn deploy local-bootstrap --auto-approve"
+  },
+  "devDependencies": {
+    "@cdktn/provider-aws": "~26.0.1",
+    "@types/node": "^22.0.0",
+    "cdktn": "~0.25.1",
+    "cdktn-cli": "~0.25.1",
+    "constructs": "^10.6.0",
+    "ts-node": "^10.9.2",
+    "typescript": "~6.0.3"
+  }
+}

@@ -1,1 +1,20 @@
-.floci/
+node_modules/
+
+# cdktn output and OpenTofu working files (based on cdktn-cli's TypeScript template;
+# *.js/*.d.ts are omitted because nothing compiles in place)
+cdktn.out/
+cdktf.out/
+cdktf.log
+cdktn.log
+.gen/
+.terraform/
+tsconfig.tsbuildinfo
+
+# State: bootstrap (AWS) in bootstrap/.state/, floci stacks in local/.state/
+.state/
+*terraform.*.tfstate*
+*.tfstate
+*.tfstate.*
+
+# floci's persisted emulator data
+local/.floci/
