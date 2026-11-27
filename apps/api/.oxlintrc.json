@@ -4,5 +4,11 @@
   ],
   "plugins": [
     "vitest"
-  ]
+  ],
+  "rules": {
+    "vitest/no-standalone-expect": [
+      "error",
+      { "additionalTestBlockFunctions": ["given", "when", "then", "and", "but"] }
+    ]
+  }
 }

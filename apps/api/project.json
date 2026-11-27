@@ -60,6 +60,39 @@
       "readyWhen": {
         "signal": true
       }
+    },
+    "test-integration": {
+      "command": "vitest run -c vitest.integration.config.mts",
+      "options": {
+        "cwd": "apps/api"
+      }
+    },
+    "migration-generate": {
+      "command": "typeorm-ts-node-commonjs -d apps/api/src/database/typeorm.config.ts migration:generate apps/api/src/database/migrations/{args.name}",
+      "options": {
+        "env": {
+          "TS_NODE_PROJECT": "apps/api/tsconfig.migrations.json",
+          "NODE_OPTIONS": "-r tsconfig-paths/register"
+        }
+      }
+    },
+    "migration-run": {
+      "command": "typeorm-ts-node-commonjs -d apps/api/src/database/typeorm.config.ts migration:run",
+      "options": {
+        "env": {
+          "TS_NODE_PROJECT": "apps/api/tsconfig.migrations.json",
+          "NODE_OPTIONS": "-r tsconfig-paths/register"
+        }
+      }
+    },
+    "migration-revert": {
+      "command": "typeorm-ts-node-commonjs -d apps/api/src/database/typeorm.config.ts migration:revert",
+      "options": {
+        "env": {
+          "TS_NODE_PROJECT": "apps/api/tsconfig.migrations.json",
+          "NODE_OPTIONS": "-r tsconfig-paths/register"
+        }
+      }
     }
   },
   "tags": []

@@ -37,6 +37,7 @@ Never write production code without a failing test that requires it.
 | UI acceptance | `apps/ui-e2e/src/features/*.feature` | `apps/ui-e2e/src/steps/*.steps.ts` | playwright-bdd | `npx nx e2e ui-e2e` |
 | API acceptance | `apps/api-e2e/src/features/*.feature` | `apps/api-e2e/src/steps/*.steps.ts` | jest-cucumber | `npx nx e2e api-e2e` |
 | UI unit | n/a | `apps/ui/src/**/*.spec.ts` | Vitest | `npx nx test ui` |
+| API ↔ database | `apps/api/src/database/features/*.feature` | `apps/api/src/**/*.int.spec.ts` | jest-cucumber on Vitest, real Postgres | `npx nx test-integration api` |
 | API unit | n/a | `apps/api/src/**/*.spec.ts` | Vitest | `npx nx test api` |
 | Shared lib unit | n/a | `libs/shared/models/src/**/*.spec.ts` | Jest | `npx nx test models` |
 
