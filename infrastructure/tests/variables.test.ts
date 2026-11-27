@@ -29,10 +29,10 @@ describe('defaults', () => {
       assert.equal(config.rds.engineVersion, '17');
       assert.equal(config.rds.port, 5432);
       assert.equal(config.networking.singleNatGateway, false);
-      assert.deepEqual(config.services, {
-        api: { port: 3000, healthCheckPath: '/api' },
-        ui: { port: 8080, healthCheckPath: '/healthz' }
-      });
+      assert.deepEqual(
+        { api: [config.services.api.port, config.services.api.healthCheckPath], ui: [config.services.ui.port, config.services.ui.healthCheckPath] },
+        { api: [3000, '/api'], ui: [8080, '/healthz'] }
+      );
     }
   });
 

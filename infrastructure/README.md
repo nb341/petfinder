@@ -22,7 +22,7 @@ infrastructure/
 ├── main.ts                  # creates one stack per env (or just INFRA_ENV) and synthesizes
 ├── stacks/
 │   ├── base-stack.ts        # abstract BaseStack: config, provider, account guard, state, tags, naming
-│   ├── application-stack.ts # networking + load balancer + rds
+│   ├── application-stack.ts # networking + load balancer + rds + ECS services
 │   ├── registry-stack.ts    # shared ECR repositories for the app images
 │   ├── state-backend.ts     # S3 (or floci) state backend for every deployable stack
 │   └── provider.ts          # AWS provider with standard tags (shared with bootstrap)
@@ -31,6 +31,7 @@ infrastructure/
 │   ├── rds/                 # RDS Postgres, password kept in Secrets Manager by RDS
 │   ├── ecr/                 # ECR repository: immutable tags, scan on push, image expiry
 │   ├── load-balancer/       # ALB, api/ui target groups, HTTP listener with /api routing
+│   ├── ecs/                 # ECS cluster and a Fargate service construct (roles, logs, task, service)
 │   └── s3/                  # private bucket: SSE, public access block, TLS-only
 ├── bootstrap/               # S3 state bucket, deployed on its own first
 ├── local/                   # floci + Postgres for local work (see local/README.md)
@@ -156,8 +157,10 @@ Replace `dev` with `uat`, `staging`, `prod` or `local`.
 2. Create the AWS profiles `petfinder-dev`, `petfinder-uat`, `petfinder-staging` and `petfinder-prod` (for example with `aws configure sso`), then log in: `aws sso login --profile petfinder-dev`.
 3. `npm run bootstrap`: creates the state bucket with the `petfinder-dev` profile.
 4. `npm run deploy:registry`: creates the ECR repositories, also with `petfinder-dev`.
-5. `npm run push:images`: needs the AWS CLI (`brew install awscli`) and a clean git tree.
-6. `npm run diff:dev`, then `npm run deploy:dev`.
+5. `npm run push:images`: needs the AWS CLI (`brew install awscli`) and a clean git tree. It prints the tag it pushed.
+6. `INFRA_IMAGE_TAG=<tag> npm run diff:dev`, then `INFRA_IMAGE_TAG=<tag> npm run deploy:dev`. Open the `app_url` output.
+
+Every synth, diff and deploy of an application stack needs `INFRA_IMAGE_TAG`, because the task definitions pin that tag. Set it in the root `.env`, or prefix the command. Deploying a new tag rolls both services. If the new tasks fail their health checks, ECS rolls back.
 
 ## What's deployed
 
@@ -172,9 +175,14 @@ The `application` stack in each env contains:
 - **Load balancer:** an internet-facing ALB on HTTP `:80`.
   - `/api` and `/api/*` go to the api target group (`services.api`: port 3000, health `/api`).
   - Everything else goes to the ui target group (`services.ui`: port 8080, health `/healthz`).
-  - It returns 503 until the ECS services register.
+- **ECS:** cluster `petfinder-<env>` and two Fargate services, `petfinder-<env>-api` and `petfinder-<env>-ui`.
+  - Tasks are ARM64 and run in the public subnets with a public IP (no NAT), behind the `app` and `ui` security groups.
+  - Each service has its own log group `/ecs/<service>` (14 days, 90 in prod), an execution role, and an empty task role. Only the api's execution role can read the RDS secret.
+  - The api gets `DB_HOST`, `DB_PORT` and `DB_NAME`, plus `DB_USERNAME` and `DB_PASSWORD` from the RDS secret. It also gets `DB_SSL=true` with the RDS CA bundle baked into the image, and `DB_RUN_MIGRATIONS` from `ecs.runMigrations`.
+  - Sizes come from `services.<app>`: `cpu`, `memory` (a valid Fargate pair) and `desiredCount`. Each is 0.25 vCPU / 512 MiB with 1 task, or 2 tasks in prod.
+  - Deployments use the circuit breaker with rollback.
 - **Database:** RDS Postgres 17 on `gp3`, with the master password in Secrets Manager (`manage_master_user_password`).
-- **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id`, `ui_security_group_id`, `alb_security_group_id`, `db_security_group_id`, `alb_dns_name`, `api_target_group_arn`, `ui_target_group_arn`, `db_endpoint`, `db_port`, `db_name` and `db_secret_arn`.
+- **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id`, `ui_security_group_id`, `alb_security_group_id`, `db_security_group_id`, `alb_dns_name`, `app_url`, `api_target_group_arn`, `ui_target_group_arn`, `ecs_cluster_name`, `api_service_name`, `ui_service_name`, `db_endpoint`, `db_port`, `db_name` and `db_secret_arn`.
 
 The account-wide `registry` stack contains:
 
