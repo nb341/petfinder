@@ -39,6 +39,30 @@ Pick an environment with `-c local|dev|uat|staging|prod`. The default is `local`
 | Preview changes | `npx nx plan infra -c local` |
 | Apply | `npx nx deploy infra -c local` |
 | Tear down | `npx nx destroy infra -c local` |
+| Create the state bucket | `npx nx bootstrap infra -c dev` |
 
 - `cdktn/cdktf.json` keeps the CDKTF file name, because cdktn still reads that name. Its `targetVersions` declares only OpenTofu, so cdktn runs `tofu` and not `terraform`.
-- Local state lives in `cdktn/.state/`, which is git-ignored. Floci endpoints, the S3 backend for AWS environments and default tags come in #8.
+- Local state lives in `cdktn/.state/`, which is git-ignored, along with the rest of cdktn's recommended ignores in `cdktn/.gitignore`.
+
+### Environments
+
+| Env | Target | State | Credentials |
+| --- | --- | --- | --- |
+| `local` | floci on `localhost:4566` | `cdktn/.state/local.tfstate` | `test` / `test` |
+| `dev`, `uat`, `staging`, `prod` | AWS `us-east-1`, one account | S3 `petfinder-tfstate-<account id>`, key `petfinder/<env>.tfstate`, locked with `use_lockfile` | AWS profile `petfinder-<env>` |
+
+Every resource gets the default tags `project=petfinder`, `env=<env>` and `managed-by=cdktn`.
+
+### First-time AWS setup
+
+1. Set `INFRA_AWS_ACCOUNT_ID` in the root `.env`. See `.env.example`.
+2. Create the AWS profiles `petfinder-dev`, `petfinder-uat`, `petfinder-staging` and `petfinder-prod` (for example with `aws configure sso`), then log in: `aws sso login --profile petfinder-dev`.
+3. Create the state bucket once per account with `npx nx bootstrap infra -c dev`. Its own state is kept in `cdktn/.state/bootstrap-aws.tfstate`, so back that file up.
+4. Run `npx nx plan infra -c dev`.
+
+### Checking it by hand on floci
+
+1. Run `npx nx bootstrap infra -c local`, then `npx nx deploy infra -c local`.
+2. Check the state bucket exists with `curl -s -o /dev/null -w '%{http_code}\n' http://localhost:4566/petfinder-tfstate-000000000000`, which should print `200`.
+3. Check the bucket rules in `cdktn/cdktn.out/stacks/petfinder-bootstrap/cdk.tf.json`: versioning `Enabled`, `AES256`, all four public access blocks, and the TLS-only policy.
+4. Check the tags with `jq '.provider.aws[0].default_tags' cdktn/cdktn.out/stacks/petfinder-local/cdk.tf.json`.

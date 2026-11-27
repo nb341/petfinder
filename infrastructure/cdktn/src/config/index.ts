@@ -1,21 +1,58 @@
-export type EnvName = 'local' | 'dev' | 'uat' | 'staging' | 'prod';
+export const AWS_ENVS = ['dev', 'uat', 'staging', 'prod'] as const;
+export const ENVS = ['local', ...AWS_ENVS] as const;
 
-export interface EnvConfig {
-  readonly name: EnvName;
+export type AwsEnvName = (typeof AWS_ENVS)[number];
+export type EnvName = (typeof ENVS)[number];
+
+interface BaseConfig {
   readonly region: string;
+  readonly accountId: string;
+  readonly stateBucket: string;
 }
 
-const configs: Record<EnvName, EnvConfig> = {
-  local: { name: 'local', region: 'us-east-1' },
-  dev: { name: 'dev', region: 'us-east-1' },
-  uat: { name: 'uat', region: 'us-east-1' },
-  staging: { name: 'staging', region: 'us-east-1' },
-  prod: { name: 'prod', region: 'us-east-1' }
-};
+export interface FlociConfig extends BaseConfig {
+  readonly name: 'local';
+  readonly target: 'floci';
+  readonly endpoint: string;
+}
 
-export function envConfig(name: string | undefined): EnvConfig {
-  if (!name || !(name in configs)) {
-    throw new Error(`Unknown INFRA_ENV "${name}". Use one of: ${Object.keys(configs).join(', ')}`);
+export interface AwsConfig extends BaseConfig {
+  readonly name: AwsEnvName;
+  readonly target: 'aws';
+  readonly profile: string;
+}
+
+export type EnvConfig = FlociConfig | AwsConfig;
+
+const REGION = 'us-east-1';
+const FLOCI_ACCOUNT_ID = '000000000000';
+
+const stateBucketFor = (accountId: string) => `petfinder-tfstate-${accountId}`;
+
+export function envConfig(name: string | undefined, vars: NodeJS.ProcessEnv = process.env): EnvConfig {
+  if (name === 'local') {
+    return {
+      name,
+      target: 'floci',
+      region: REGION,
+      accountId: FLOCI_ACCOUNT_ID,
+      stateBucket: stateBucketFor(FLOCI_ACCOUNT_ID),
+      endpoint: 'http://localhost:4566'
+    };
   }
-  return configs[name as EnvName];
+  if (!AWS_ENVS.includes(name as AwsEnvName)) {
+    throw new Error(`Unknown INFRA_ENV "${name}". Use one of: ${ENVS.join(', ')}`);
+  }
+  const accountId = vars['INFRA_AWS_ACCOUNT_ID'];
+  if (!accountId) {
+    throw new Error(`INFRA_AWS_ACCOUNT_ID is required for "${name}". Set it in the root .env file.`);
+  }
+  return {
+    name: name as AwsEnvName,
+    target: 'aws',
+    region: REGION,
+    accountId,
+    stateBucket: vars['INFRA_STATE_BUCKET'] || stateBucketFor(accountId),
+    profile: `petfinder-${name}`
+  };
 }

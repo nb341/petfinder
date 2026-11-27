@@ -1,6 +1,6 @@
 # Infrastructure Plan
 
-> **Status:** planned, with tickets #6–#13. #6 (floci) and #7 (cdktn project) are done. The API compute choice is still open (#13).
+> **Status:** planned, with tickets #6–#13. #6 (floci), #7 (cdktn project) and #8 (environment-aware provider and state) are done. The API compute choice is still open (#13).
 
 ## Goals
 
@@ -28,7 +28,7 @@ infrastructure/cdktn/          # Nx project "infra"
 │   ├── config/                # per-environment settings (local, dev, prod)
 │   ├── provider.ts            # environment-aware AWS provider + backend
 │   ├── stacks/
-│   │   ├── bootstrap-stack.ts # S3 state bucket (AWS only)
+│   │   ├── bootstrap-stack.ts # S3 state bucket, one per account (also deployable to floci)
 │   │   └── petfinder-stack.ts # composes the constructs below
 │   └── constructs/
 │       ├── network.ts         # VPC, subnets, routing, security groups
@@ -48,13 +48,17 @@ The constructs are the same in every environment. Only configuration changes:
 | Concern | `local` (floci) | `dev` / `uat` / `staging` / `prod` (AWS) |
 | --- | --- | --- |
 | Provider endpoints | Every service used points to `http://localhost:4566`. Floci requires an entry for each service. | Default AWS endpoints |
-| Credentials | `test` / `test`, with `skip_credentials_validation`, `skip_metadata_api_check`, `skip_requesting_account_id` and `s3_use_path_style` | AWS profile or SSO, later an OIDC role in CI |
-| Region / account | `us-east-1` / `000000000000` | Real region and account |
-| State backend | Local file at `infrastructure/cdktn/.state/local.tfstate`, git-ignored | S3 bucket with `use_lockfile`, created by the bootstrap stack |
+| Credentials | `test` / `test`, with `skip_credentials_validation`, `skip_metadata_api_check`, `skip_requesting_account_id` and `s3_use_path_style` | AWS profile `petfinder-<env>` (SSO), later an OIDC role in CI. `allowed_account_ids` guards against the wrong account. |
+| Region / account | `us-east-1` / `000000000000` | `us-east-1`, one shared account (`INFRA_AWS_ACCOUNT_ID` in the root `.env`) |
+| State backend | Local file at `infrastructure/cdktn/.state/local.tfstate`, git-ignored | One shared S3 bucket `petfinder-tfstate-<accountId>` (override with `INFRA_STATE_BUCKET`), key `petfinder/<env>.tfstate`, `encrypt` and `use_lockfile`. Created by `nx bootstrap infra`. |
 | Sizes | Smallest available | Set per environment, for example `db.t4g.micro` in dev |
 | Deletion protection | Off | On in prod |
 
-Each construct takes a typed config object, so the differences stay in `src/config/*.ts`.
+Each construct takes a typed config object, so the differences stay in `src/config/*.ts`. Every provider sets default tags `project=petfinder`, `env=<env>` and `managed-by=cdktn`.
+
+**Bootstrap state:** the bootstrap stack can't keep its state in the bucket it creates, so its state is a git-ignored local file, `.state/bootstrap-aws.tfstate`. Back it up. If it's lost, re-import the bucket with `tofu import`.
+
+**floci fidelity checked so far:** S3 native state locking (`use_lockfile`) works against floci. Checked on 2026-11-27: a second `tofu apply` failed with "Error acquiring the state lock" while the first was running.
 
 ## Messaging
 
