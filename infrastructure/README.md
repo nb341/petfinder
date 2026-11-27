@@ -60,6 +60,24 @@ Every resource gets the default tags `project=petfinder`, `env=<env>` and `manag
 3. Create the state bucket once per account with `npx nx bootstrap infra -c dev`. Its own state is kept in `cdktn/.state/bootstrap-aws.tfstate`, so back that file up.
 4. Run `npx nx plan infra -c dev`.
 
+### Network
+
+Each env gets a VPC across `us-east-1a` and `us-east-1b`, with 2 public and 2 private `/24` subnets. Only the public route table has a route to the internet gateway.
+- **CIDRs:** `local` 10.0.0.0/16, `dev` 10.10, `uat` 10.20, `staging` 10.30, `prod` 10.40.
+- **NAT:** set `nat: 'single'` for an env in `cdktn/src/config/index.ts` to give its private subnets outbound internet, at about $33 a month on AWS. Every env is `none` for now.
+- **Security groups:** `app` (for API compute) and `db` (`5432` only from `app`).
+- **Outputs:** `vpc_id`, `public_subnet_ids`, `private_subnet_ids`, `app_security_group_id` and `db_security_group_id`.
+
+To check the network on floci after `npx nx deploy infra -c local`, read it back with signed `curl` requests. No AWS CLI is needed:
+
+```bash
+ec2() { curl -s --aws-sigv4 "aws:amz:us-east-1:ec2" --user test:test -d "Version=2016-11-15&$1" http://localhost:4566/; }
+VPC=$(cd cdktn/cdktn.out/stacks/petfinder-local && tofu output -raw vpc_id)
+ec2 "Action=DescribeSubnets&Filter.1.Name=vpc-id&Filter.1.Value.1=$VPC"       # 4 subnets, 2 AZs
+ec2 "Action=DescribeRouteTables&Filter.1.Name=vpc-id&Filter.1.Value.1=$VPC"   # igw route only on the public table
+ec2 "Action=DescribeSecurityGroups&Filter.1.Name=vpc-id&Filter.1.Value.1=$VPC"
+```
+
 ### Checking it by hand on floci
 
 1. Run `npx nx bootstrap infra -c local`, then `npx nx deploy infra -c local`.
